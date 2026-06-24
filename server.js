@@ -18,10 +18,12 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Root check endpoint
 app.get('/', (req, res) => {
   res.send('PDF CSV Extractor API Running');
 });
 
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -29,15 +31,14 @@ app.get('/health', (req, res) => {
   });
 });
 
+// The Extraction Route
 app.post(
   '/extract-invoice',
   upload.single('file'),
   async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({
-          error: 'No PDF file uploaded.',
-        });
+        return res.status(400).json({ error: 'No PDF file uploaded.' });
       }
 
       console.log('File received:', {
@@ -46,74 +47,49 @@ app.post(
         type: req.file.mimetype,
       });
 
-      const base64Pdf =
-        req.file.buffer.toString('base64');
+      // Convert document buffer to base64 string
+      const base64Pdf = req.file.buffer.toString('base64');
 
-      const response =
-        await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          response_format: {
-            type: 'json_object',
+      // Request structured output from OpenAI 
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        response_format: {
+          type: 'json_object',
+        },
+        messages: [
+          {
+            role: 'system',
+            content: 'Return only valid JSON with fields vendor, date, invoice_number, tax_amount',
           },
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Return only valid JSON with fields vendor, date, invoice_number, tax_amount, total_amount.',
-            },
-            {
-              role: 'user',
-              content: `Extract invoice information from this PDF data: ${base64Pdf.substring(
-                0,
-                5000
-              )}`,
-            },
-          ],
-        });
-
-      const content =
-        response.choices[0].message.content;
-
-      const extractedFields =
-        JSON.parse(content);
-
-      const csvHeaders =
-        'Vendor,Date,Invoice Number,Tax Amount,Total Amount\n';
-
-      const csvRow =
-        `"${extractedFields.vendor}","${extractedFields.date}","${extractedFields.invoice_number}",${extractedFields.tax_amount},${extractedFields.total_amount}\n`;
-
-      const csvOutput =
-        csvHeaders + csvRow;
-
-      res.setHeader(
-        'Content-Type',
-        'text/csv'
-      );
-
-      res.setHeader(
-        'Content-Disposition',
-        'attachment; filename=invoice_data.csv'
-      );
-
-      return res.status(200).send(csvOutput);
-    } catch (err) {
-      console.error(
-        'Processing Error:',
-        err
-      );
-
-      return res.status(500).json({
-        error:
-          'Pipeline failed to process document',
-        details: err.message,
+          {
+            role: 'user',
+            content: `Extract invoice information from this PDF data: ${base64Pdf}`,
+          },
+        ],
       });
+
+      // Parse JSON from OpenAI
+      const jsonString = response.choices.message.content;
+      const data = JSON.parse(jsonString);
+
+      // Convert parsed JSON into raw CSV row format strings
+      const headers = 'vendor,date,invoice_number,tax_amount\n';
+      const csvRow = `"${data.vendor || ''}","${data.date || ''}","${data.invoice_number || ''}","${data.tax_amount || ''}"\n`;
+      const csvContent = headers + csvRow;
+
+      // Send the text string back to FlutterFlow as a downloadable CSV content stream
+      res.setHeader('Content-Type', 'text/csv');
+      res.status(200).send(csvContent);
+
+    } catch (error) {
+      console.error('Extraction Error:', error);
+      res.status(500).json({ error: 'Failed to extract invoice data.' });
     }
   }
 );
 
+// Start the server
 app.listen(port, () => {
-  console.log(
-    `Server running on port ${port}`
-  );
+  console.log(`Server listening on port ${port}`);
 });
+
