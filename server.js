@@ -39,13 +39,23 @@ app.use(cors());
 async function upsertSubscription(subscription, status) {
   const customerId = subscription.customer;
   const userId = subscription.metadata?.user_id || null;
+  const priceId = subscription.items?.data?.[0]?.price?.id || null;
+
+  const planName =
+    priceId === process.env.STARTER_PRICE_ID ? 'starter' :
+    priceId === process.env.PRO_PRICE_ID ? 'pro' :
+    priceId === process.env.BUSINESS_PRICE_ID ? 'business' : 'free';
+
+  console.log('Price ID received:', priceId);
+  console.log('Plan name resolved:', planName);
 
   const payload = {
     firebase_uid: userId,
     stripe_customer_id: customerId,
     stripe_subscription_id: subscription.id,
+    plan_name: planName,
     status: status,
-    price_id: subscription.items?.data?.[0]?.price?.id || null,
+    price_id: priceId,
     current_period_end: subscription.current_period_end
       ? new Date(subscription.current_period_end * 1000)
       : null,
