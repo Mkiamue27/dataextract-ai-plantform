@@ -284,9 +284,8 @@ app.post('/extract-invoice', upload.single('file'), async (req, res) => {
                         {
                             type: "file",
                             file: {
-                               data: pdfBase64,
-                               media_type: "application/pdf",
-                               filename: "invoice"
+                               filename: "invoice.pdf",
+                               file_data: 'data:application/pdf;base64,${pdfbase64}'
                             }
                         }
                     ]
