@@ -279,7 +279,7 @@ app.post('/extract-invoice', upload.single('file'), async (req, res) => {
                     content: [
                         { 
                             type: "text", 
-                            text: "Extract all structural data from this invoice. Return the output strictly as clean, raw CSV formatting without any markdown code block wrappers (no ```csv)." 
+                            text: "text: "Convert the text content of this invoice into raw CSV rows. Provide columns for Invoice Number, Invoice Date, Bill To, Address, Phone, Email, Description, Quantity, Unit Price, and Total. Return only the raw CSV rows without markdown blocks." 
                         },
                         {
                             type: "file",
