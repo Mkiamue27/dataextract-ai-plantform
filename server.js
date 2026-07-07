@@ -304,7 +304,7 @@ Issuer Mailing Address
 
 Rules:
 
-- Include a single bold header row as the first line, and do not repeat the header anywhere else in the output.
+- Include a single header row as the first line, and do not repeat the header anywhere else in the output.
 - Return one CSV row for every transaction or service line item.
 - Repeat the Provider/Issuer Name, Contact Phone, and Mailing Address on every row.
 - Preserve dates exactly as shown in the document.
