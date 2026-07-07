@@ -279,7 +279,48 @@ app.post('/extract-invoice', upload.single('file'), async (req, res) => {
                     content: [
                         { 
                             type: "text", 
-                            text: "Analyze this financial document (invoice, receipt, or statement). Extract all transactional line items into clean raw CSV rows. Include columns for: Document Type, Provider/Issuer Name, Document/Account ID, Transaction Date, Line Item Description, Quantity/CPT Code, Gross Amount, Adjustments/Tax, and Net Responsibility. Append the Issuer Contact Phone and Mailing Address to every row. Include a clear header row as the first line. Return only raw CSV rows without markdown blocks." 
+                            text:  `Analyze this financial document (invoice, receipt, statement, medical bill, bank statement, or financial report).
+
+Extract every transactional line item into clean CSV rows.
+
+Return exactly one row for each charge, payment, adjustment, refund, service, or transaction found in the document.
+
+Use the following columns in this exact order:
+
+Document Type,
+Provider/Issuer Name,
+Document/Account ID,
+Transaction Date,
+Line Item Description,
+Quantity,
+CPT/Procedure Code,
+Gross Amount,
+Adjustments/Discounts/Tax,
+Net Responsibility,
+Currency,
+Issuer Contact Phone,
+Issuer Mailing Address
+
+Rules:
+
+- Include a single header row as the first line.
+- Return one CSV row for every transaction or service line item.
+- Repeat the Provider/Issuer Name, Contact Phone, and Mailing Address on every row.
+- Preserve dates exactly as shown in the document.
+- Separate Quantity and CPT/Procedure Code into different columns.
+- If a CPT, HCPCS, ICD, or Procedure Code exists, place it only in the CPT/Procedure Code column.
+- Never place CPT codes, account numbers, invoice numbers, phone numbers, ZIP codes, document IDs, or other identifiers into any monetary column.
+- Monetary columns (Gross Amount, Adjustments/Discounts/Tax, Net Responsibility) must contain only monetary values formatted with exactly two decimal places (e.g., 30.00, -4.56, 593.00). Do not include currency symbols.
+- Populate the Currency column using the document's currency (USD, CAD, EUR, GBP, etc.). If the currency cannot be determined, leave it blank.
+- Quantity should contain only numeric values when available. If no quantity exists, leave it blank.
+- Leave any unknown or missing values blank rather than guessing.
+- Preserve negative values for credits, discounts, refunds, or adjustments.
+- Do not merge multiple transactions into a single row.
+- Do not invent or infer information that is not present in the document.
+- Every row must contain exactly 13 comma-separated fields, matching the 13 header columns, including trailing commas for any blank fields at the end of a row.
+- If any field contains a comma, line break, or double quote, wrap that field in double quotes and escape internal double quotes by doubling them, per standard CSV escaping rules.
+- Return only raw CSV rows.
+- Do not include Markdown, code blocks, explanations, notes, or additional text.` 
                         },
                         {
                             type: "file",
@@ -289,7 +330,7 @@ app.post('/extract-invoice', upload.single('file'), async (req, res) => {
                             }
                         }
                     ]
-                }
+                },
             ]
         });
 
