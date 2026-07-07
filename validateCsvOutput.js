@@ -35,6 +35,11 @@ const HEADER = [
   'Issuer Mailing Address',
 ];
 
+/**
+ * Parses a single CSV line respecting quoted fields (handles commas,
+ * escaped quotes, and embedded content inside double quotes).
+ * Does NOT rely on a naive .split(',').
+ */
 function parseCsvLine(line) {
   const fields = [];
   let current = '';
@@ -47,7 +52,7 @@ function parseCsvLine(line) {
     if (inQuotes) {
       if (char === '"' && nextChar === '"') {
         current += '"';
-        i++;
+        i++; // skip escaped quote
       } else if (char === '"') {
         inQuotes = false;
       } else {
@@ -68,6 +73,10 @@ function parseCsvLine(line) {
   return fields;
 }
 
+/**
+ * Re-serializes a row array back into a proper CSV line,
+ * quoting any field that contains a comma, quote, or newline.
+ */
 function toCsvLine(fields) {
   return fields
     .map((field) => {
@@ -80,6 +89,22 @@ function toCsvLine(fields) {
     .join(',');
 }
 
+/**
+ * Validates and normalizes the raw CSV string.
+ *
+ * @param {string} rawCsv - the raw CSV text returned by the model
+ * @param {object} [options]
+ * @param {boolean} [options.padShortRows=true] - pad rows with fewer
+ *   than EXPECTED_COLUMNS fields with trailing empty strings, rather
+ *   than rejecting them outright.
+ * @returns {{
+ *   valid: boolean,
+ *   rows: string[][],
+ *   cleanedCsv: string,
+ *   errors: string[],
+ *   flaggedRows: { lineNumber: number, original: string, fieldCount: number }[]
+ * }}
+ */
 function validateCsv(rawCsv, options = {}) {
   const { padShortRows = true } = options;
 
@@ -102,15 +127,36 @@ function validateCsv(rawCsv, options = {}) {
     };
   }
 
+  const normalize = (arr) => arr.map((f) => f.trim().toLowerCase());
+  const headerNormalized = normalize(HEADER);
+
+  let sawHeader = false;
+
   lines.forEach((line, idx) => {
     const lineNumber = idx + 1;
+
+    // Strip stray markdown fences the model sometimes emits despite instructions
+    if (/^```/.test(line.trim())) {
+      return;
+    }
+
     const fields = parseCsvLine(line);
+
+    // Detect header rows (first one is kept implicitly via HEADER constant;
+    // any repeat, anywhere in the output, is dropped rather than treated as data)
+    if (fields.length === EXPECTED_COLUMNS && JSON.stringify(normalize(fields)) === JSON.stringify(headerNormalized)) {
+      if (!sawHeader) {
+        sawHeader = true;
+      }
+      return; // never push header rows into `rows`
+    }
 
     if (fields.length === EXPECTED_COLUMNS) {
       rows.push(fields);
       return;
     }
 
+    // Row is short or long — flag it regardless of what we do next.
     flaggedRows.push({
       lineNumber,
       original: line,
@@ -127,9 +173,12 @@ function validateCsv(rawCsv, options = {}) {
         rows.push(padded);
       }
     } else {
+      // Too many fields — likely an unescaped comma inside a field
+      // (e.g. an address like "Philadelphia, PA" that wasn't quoted).
       errors.push(
         `Line ${lineNumber}: expected ${EXPECTED_COLUMNS} fields, got ${fields.length} (likely an unescaped comma in a field, e.g. an address).`
       );
+      // Don't guess how to merge fields back together — surface for manual review.
     }
   });
 
