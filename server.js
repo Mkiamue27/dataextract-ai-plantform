@@ -19,7 +19,6 @@ const openai = new OpenAI({
 });
 
 const stripe = new Stripe(process.env.STRIPE_API_KEY);
-
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 const supabase = createClient(
@@ -86,7 +85,6 @@ app.post(
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     const sig = req.headers['stripe-signature'];
-
     let event;
 
     try {
@@ -101,9 +99,7 @@ app.post(
     }
 
     try {
-
       switch (event.type) {
-
         case 'checkout.session.completed': {
           const session = event.data.object;
           console.log('Checkout Completed');
@@ -114,7 +110,6 @@ app.post(
             );
             await upsertSubscription(subscription, 'active');
           }
-
           break;
         }
 
@@ -143,11 +138,10 @@ app.post(
           console.log(`Unhandled event: ${event.type}`);
       }
 
-      res.json({ received: true });
-
+      return res.json({ received: true });
     } catch (err) {
       console.error(err);
-      res.status(500).json({
+      return res.status(500).json({
         error: 'Webhook processing failed.',
       });
     }
@@ -155,7 +149,7 @@ app.post(
 );
 
 /* ============================================================
-   NORMAL JSON PARSER
+   NORMAL JSON PARSER & MULTER STORAGE CONFIG
 ============================================================ */
 
 app.use(express.json());
@@ -179,7 +173,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Middleware to enforce monthly subscription limits
+/* ============================================================
+   USAGE LIMIT ENFORCEMENT MIDDLEWARE
+============================================================ */
+
 async function checkUsageLimit(req, res, next) {
   const { firebase_uid } = req.body; 
   if (!firebase_uid) return res.status(400).json({ error: "Missing firebase_uid" });
@@ -211,8 +208,7 @@ async function checkUsageLimit(req, res, next) {
     if (error) throw error;
 
     // 3. Count incoming batch files
-    // Multer populates req.files for array uploads
-    const incomingFilesCount = req.files ? req.files.length : 1; 
+    const incomingFilesCount = req.files ? req.files.length : (req.file ? 1 : 0); 
     const totalProjectedCount = count + incomingFilesCount;
     
     const FREE_LIMIT = 10;
@@ -236,8 +232,9 @@ async function checkUsageLimit(req, res, next) {
    GET SUBSCRIPTION ROUTE
 ============================================================ */
 
-app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req, res) => { ... });
-  }
+app.post('/get-subscription-status', async (req, res) => {
+  const { uid } = req.body;
+  if (!uid) return res.status(400).json({ error: 'Missing uid' });
 
   try {
     const { data, error } = await supabase
@@ -255,7 +252,7 @@ app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req,
       });
     }
 
-    res.json({
+    return res.json({
       plan: data.plan_name || 'free',
       status: data.status || 'inactive',
       current_period_end: data.current_period_end,
@@ -264,7 +261,7 @@ app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req,
 
   } catch (err) {
     console.error('Get subscription error:', err.message);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -300,36 +297,35 @@ app.post('/create-checkout-session', async (req, res) => {
       cancel_url: cancelUrl || 'https://yourapp.com/cancel',
     });
 
-    res.json({ url: session.url });
+    return res.json({ url: session.url });
 
   } catch (err) {
     console.error('Checkout session error:', err.message);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
 /* ============================================================
-   EXTRACTION ROUTES
+   EXTRACTION ROUTE - SINGLE FILE
 ============================================================ */
 
-   app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded under the field name "file".' });
-        }
+app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req, res) => {
+  try {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded under the field name "file".' });
+    }
 
-        // Convert file buffer to base64 for the OpenAI API payload
-        const pdfBase64 = req.file.buffer.toString('base64');
+    const pdfBase64 = req.file.buffer.toString('base64');
 
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "user",
-                    content: [
-                        { 
-                            type: "text", 
-                            text: `Analyze this financial document (invoice, receipt, statement, medical bill, bank statement, or financial report).
+    const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+            {
+                role: "user",
+                content: [
+                    { 
+                        type: "text", 
+                        text: `Analyze this financial document (invoice, receipt, statement, medical bill, bank statement, or financial report).
 
 Extract every transactional line item into clean CSV rows.
 
@@ -372,35 +368,39 @@ Rules:
 - Every row must contain exactly 13 comma-separated fields, matching the 13 header columns, including trailing commas for any blank fields at the end of a row.
 - If any field contains a comma, line break, or double quote, wrap that field in double quotes and escape internal double quotes by doubling them, per standard CSV escaping rules.
 - Return only raw CSV rows.
-- Do not include Markdown, code blocks, explanations, notes, or additional text.`, 
-                           },
-                        {
-                            type: "file",
-                            file: {
-                               filename: "invoice.pdf",
-                               file_data: "data:application/pdf;base64," + pdfBase64
-                            }
+- Do not include Markdown, code blocks, explanations, notes, or additional text.`
+                    },
+                    {
+                        type: "file",
+                        file: {
+                           filename: "invoice.pdf",
+                           file_data: "data:application/pdf;base64," + pdfBase64
                         }
-                    ]
-                },
-            ]
-        });
+                    }
+                ]
+            }
+        ]
+    });
 
-        const rawCsv = response.choices[0].message.content;
-        const result = validateCsv(rawCsv);
+    const rawCsv = response.choices[0].message.content;
+    const result = validateCsv(rawCsv);
 
-         if (!result.valid) {
-            console.warn('CSV validation issues:', result.errors);
-         }
+    if (!result.valid) {
+        console.warn('CSV validation issues:', result.errors);
+    }
 
-        res.setHeader('Content-Type', 'text/csv');
-        return res.status(200).send(result.cleanedCsv);
+    res.setHeader('Content-Type', 'text/csv');
+    return res.status(200).send(result.cleanedCsv);
 
-    } catch (error) {
-        console.error('Extraction Endpoint Error:', error.message);
-        return res.status(500).json({ error: 'Internal server error during PDF extraction.' });
-         }
-       });
+  } catch (error) {
+    console.error('Extraction Endpoint Error:', error.message);
+    return res.status(500).json({ error: 'Internal server error during PDF extraction.' });
+  }
+});
+
+/* ============================================================
+   EXTRACTION ROUTE - BATCH MULTI-FILE
+============================================================ */
 
 app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res) => { 
   try {
@@ -408,7 +408,6 @@ app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res
       return res.status(400).json({ error: "No files uploaded." });
     }
 
-    // 1. Create a master array outside the loop to collect all rows
     const allCsvRows = [];
     let headersAdded = false;
 
@@ -417,33 +416,30 @@ app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res
       try {
         const pdfBase64 = file.buffer.toString('base64');
 
-        // Native fetch request to bypass library module crashes
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [ ... ]
-         }); 
-         {
-          role: "user",
-          content: [
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
             {
-              type: "text",
-              text: "Analyze this document and extract every transactional line item into clean CSV rows matching our target headers."
-            },
-            {
-              type: "file",
-              file: {
-                filename: "invoice.pdf",
-                file_data: "data:application/pdf;base64," + pdfBase64
-              }
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Analyze this document and extract every transactional line item into clean CSV rows matching our target headers."
+                },
+                {
+                  type: "file",
+                  file: {
+                    filename: "invoice.pdf",
+                    file_data: "data:application/pdf;base64," + pdfBase64
+                  }
+                }
+              ]
             }
           ]
-        }
-      ]
-    });
-        const responseData = await openAiResponse.json();
+        });
 
-       if (response.choices && response.choices[0]) {
-         const rawCsv = response.choices[0].message.content || '';
+        if (response.choices && response.choices[0]) {
+          const rawCsv = response.choices[0].message.content || '';
           
           // Strip out markdown formatting blocks if the AI includes them   
           const cleanText = rawCsv.replace(/```csv/g, '').replace(/```/g, '').trim();
@@ -463,14 +459,13 @@ app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res
         }
       } catch (fileError) {
         console.error(`Failed to process an individual file:`, fileError);
-        // Continue processing remaining files even if one fails
       }
     }
 
-    // 2. Combine all gathered rows across all files together
+    // Combine all gathered rows across all files together
     const finalCsvString = allCsvRows.join('\n');
 
-    // 3. Return the compiled data stream cleanly back to FlutterFlow
+    // Return the compiled data stream cleanly back to FlutterFlow
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=extracted_data.csv');
     return res.status(200).send(finalCsvString);
@@ -479,10 +474,10 @@ app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res
     console.error("Batch extraction endpoint error:", error);
     return res.status(500).json({ error: "Internal server extraction error" });
   }
-});  
+});   
    
 /* ============================================================
-   SERVER
+   SERVER LISTENER
 ============================================================ */
 
 app.listen(port, () => {
