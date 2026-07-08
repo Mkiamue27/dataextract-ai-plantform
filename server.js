@@ -422,10 +422,11 @@ Rules:
         const pdfBase64 = file.buffer.toString('base64');
 
         // Native fetch request to bypass library module crashes
-       const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [ ... ]
+         }); 
+         {
           role: "user",
           content: [
             {
@@ -445,10 +446,10 @@ Rules:
     });
         const responseData = await openAiResponse.json();
 
-        if (responseData.choices && responseData.choices[0]) {
-          const rawCsv = responseData.choices[0].message.content || '';
+       if (response.choices && response.choices[0]) {
+         const rawCsv = response.choices[0].message.content || '';
           
-          // Strip out markdown formatting blocks if the AI includes them
+          // Strip out markdown formatting blocks if the AI includes them   
           const cleanText = rawCsv.replace(/```csv/g, '').replace(/```/g, '').trim();
           const cleanLines = cleanText.split('\n').filter(line => line.trim() !== '');
 
