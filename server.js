@@ -422,31 +422,36 @@ Rules:
         const pdfBase64 = file.buffer.toString('base64');
 
         // Call OpenAI for this specific file
-        const response = await openai.chat.completions.create({
+        // Native HTTP Post Request directly to OpenAI API
+      const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
+        },
+        body: JSON.stringify({
           model: "gpt-4o",
-
-         messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Analyze this document and extract every transactional line item into clean CSV rows matching our target headers.`
-              },
-              {
-                type: "file",
-                file: {
-                    filename: "invoice.pdf",
-                    file_data: "data:application/pdf;base64," + pdfBase64
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Analyze this financial document and extract every transactional line item into clean CSV rows matching our target headers."
+                },
+                {
+                  type: "text",
+                  text: "Document Data (Base64):\n" + pdfBase64
                 }
-              }
-            ]
-          }
-        ]
+              ]
+            }
+          ]
+        })
+      });
 
-        const rawCsv = response.choices[0].message.content;
-        const result = validateCsv(rawCsv);
-
+      const responseData = await openAiResponse.json();
+      const rawText = responseData.choices && responseData.choices[0] ? responseData.choices[0].message.content : '';
+       
         if (result.valid) {
           // Split content into lines to handle headers intelligently
           const lines = result.cleanedCsv.split('\n').filter(line => line.trim() !== '');
