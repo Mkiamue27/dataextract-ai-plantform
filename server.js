@@ -406,7 +406,7 @@ Rules:
          }
        });
 
-   app.post('/extract-csv', upload.array('files'), checkUsageLimit, async (req, res) => {
+   app.post('/extract-csv', upload.array('files'), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "No files uploaded." });
@@ -424,21 +424,25 @@ Rules:
         // Call OpenAI for this specific file
         const response = await openai.chat.completions.create({
           model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "Extract the data from this invoice into raw CSV rows matching our 13-field architecture..." },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:application/pdf;base64,${pdfBase64}`
-                  }
+
+         messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this document and extract every transactional line item into clean CSV rows matching our target headers.`
+              },
+              {
+                type: "file",
+                file: {
+                    filename: "invoice.pdf",
+                    file_data:`data:application/pdf;base64,${pdfBase64}`
                 }
-              ]
-            }
-          ]
-        });
+              }
+            ]
+          }
+        ]
 
         const rawCsv = response.choices[0].message.content;
         const result = validateCsv(rawCsv);
