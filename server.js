@@ -236,11 +236,7 @@ async function checkUsageLimit(req, res, next) {
    GET SUBSCRIPTION ROUTE
 ============================================================ */
 
-app.get('/get-subscription', async (req, res) => {
-  const { uid } = req.query;
-
-  if (!uid) {
-    return res.status(400).json({ error: 'uid is required.' });
+app.post('/extract-invoice', upload.single('file'), checkUsageLimit, async (req, res) => { ... });
   }
 
   try {
