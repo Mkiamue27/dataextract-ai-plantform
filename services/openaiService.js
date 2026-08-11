@@ -97,11 +97,7 @@ Do not invent values that are not supported by the document.
 
   try {
 
-  console.log("========== OpenAI Upload ==========");
-  console.log("Filename:", filename);
-  console.log("Original MIME:", mimeType);
-  console.log("Normalized MIME:", normalizedMimeType);
-  console.log("==================================");
+  console.log(`Processing ${filename} (${normalizedMimeType})`);
   
     /* ============================================================
        OPENAI REQUEST
