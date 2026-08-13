@@ -15,12 +15,13 @@
  * - clean_data
  *
  * Responsibilities:
- * - Enforce the fixed 13-column financial schema.
+ * - Enforce the fixed 21-column financial schema.
  * - Remove duplicate header rows.
  * - Detect short/long rows.
  * - Pad short rows when configured.
  * - Preserve valid quoted commas, quotes, and line breaks.
  * - Re-serialize cleaned output as valid CSV.
+ * - Validate structured monetary fields without inventing values.
  */
 
 
@@ -28,7 +29,7 @@
    FIXED FINANCIAL SCHEMA
 ============================================================ */
 
-const EXPECTED_COLUMNS = 13;
+const EXPECTED_COLUMNS = 21;
 
 const HEADER = [
   "Document Type",
@@ -41,10 +42,43 @@ const HEADER = [
   "Gross Amount",
   "Adjustments/Discounts/Tax",
   "Net Responsibility",
+  "Subtotal",
+  "Total Amount",
+  "Amount Due",
+  "Amount Due Now",
+  "Current Balance",
+  "Previous Balance",
+  "Payments/Credits",
+  "Patient Responsibility",
   "Currency",
   "Issuer Contact Phone",
   "Issuer Mailing Address",
 ];
+
+
+/* ============================================================
+   MONETARY FIELD CONFIGURATION
+============================================================ */
+
+const MONETARY_COLUMNS = [
+  "Gross Amount",
+  "Adjustments/Discounts/Tax",
+  "Net Responsibility",
+  "Subtotal",
+  "Total Amount",
+  "Amount Due",
+  "Amount Due Now",
+  "Current Balance",
+  "Previous Balance",
+  "Payments/Credits",
+  "Patient Responsibility",
+];
+
+const MONETARY_COLUMN_INDEXES =
+  MONETARY_COLUMNS.map(
+    (columnName) =>
+      HEADER.indexOf(columnName)
+  );
 
 
 /* ============================================================
@@ -327,6 +361,128 @@ function removeMarkdownFences(text) {
 
 
 /* ============================================================
+   MONETARY VALIDATION HELPERS
+============================================================ */
+
+/**
+ * Acceptable monetary examples:
+ *
+ * 858.44
+ * -236.00
+ * 0.00
+ * 593
+ * -4.56
+ *
+ * Reject examples:
+ *
+ * $858.44
+ * USD 858.44
+ * 858.44 dollars
+ *
+ * Empty values are allowed.
+ */
+function isValidMonetaryValue(value) {
+  const normalized =
+    String(value ?? "")
+      .trim();
+
+  if (normalized === "") {
+    return true;
+  }
+
+  return /^-?\d+(?:\.\d{1,2})?$/.test(
+    normalized
+  );
+}
+
+
+/**
+ * Normalize valid monetary values to exactly two decimals.
+ *
+ * Empty values remain empty.
+ * Invalid values are preserved so they can be flagged instead
+ * of silently changed.
+ */
+function normalizeMonetaryValue(value) {
+  const normalized =
+    String(value ?? "")
+      .trim();
+
+  if (normalized === "") {
+    return "";
+  }
+
+  if (
+    !isValidMonetaryValue(normalized)
+  ) {
+    return normalized;
+  }
+
+  const numericValue =
+    Number(normalized);
+
+  if (
+    !Number.isFinite(numericValue)
+  ) {
+    return normalized;
+  }
+
+  return numericValue.toFixed(2);
+}
+
+
+/**
+ * Validate and normalize monetary fields in one row.
+ *
+ * @param {string[]} fields
+ * @param {number} lineNumber
+ * @param {string[]} errors
+ * @returns {string[]}
+ */
+function validateMonetaryFields(
+  fields,
+  lineNumber,
+  errors
+) {
+  const normalizedFields =
+    [...fields];
+
+  MONETARY_COLUMN_INDEXES.forEach(
+    (columnIndex) => {
+
+      if (columnIndex < 0) {
+        return;
+      }
+
+      const value =
+        normalizedFields[columnIndex];
+
+      const columnName =
+        HEADER[columnIndex];
+
+
+      if (
+        !isValidMonetaryValue(value)
+      ) {
+        errors.push(
+          `Row ${lineNumber}: invalid monetary value "${value}" ` +
+          `in "${columnName}". Expected numeric value without currency symbols.`
+        );
+
+        return;
+      }
+
+
+      normalizedFields[columnIndex] =
+        normalizeMonetaryValue(value);
+    }
+  );
+
+  return normalizedFields;
+}
+
+
+/* ============================================================
    MAIN VALIDATOR
 ============================================================ */
 
@@ -486,7 +642,18 @@ function validateCsv(
         fields.length ===
         EXPECTED_COLUMNS
       ) {
-        rows.push(fields);
+
+        const normalizedFields =
+          validateMonetaryFields(
+            fields,
+            lineNumber,
+            errors
+          );
+
+        rows.push(
+          normalizedFields
+        );
+
         return;
       }
 
@@ -535,7 +702,16 @@ function validateCsv(
           }
 
 
-          rows.push(padded);
+          const normalizedFields =
+            validateMonetaryFields(
+              padded,
+              lineNumber,
+              errors
+            );
+
+          rows.push(
+            normalizedFields
+          );
         }
 
 
@@ -605,4 +781,7 @@ module.exports = {
   toCsvLine,
   EXPECTED_COLUMNS,
   HEADER,
+  MONETARY_COLUMNS,
+  isValidMonetaryValue,
+  normalizeMonetaryValue,
 };
