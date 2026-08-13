@@ -77,6 +77,7 @@ function getOutputExtension(
   processingMode
 ) {
   switch (processingMode) {
+
     case "pdf_excel":
       return "xlsx";
 
@@ -127,43 +128,130 @@ function buildOutputFileName(
 }
 
 
-function financialJsonToCsv(rawContent) {
+/* ============================================================
+   FINANCIAL JSON -> CSV
+============================================================ */
+
+function financialJsonToCsv(
+  rawContent
+) {
   let parsed;
 
   try {
-    parsed = JSON.parse(rawContent);
+    parsed =
+      JSON.parse(rawContent);
   } catch (error) {
+
+    console.error(
+      "Financial JSON parse failed."
+    );
+
+    console.error(
+      "OpenAI response length:",
+      String(rawContent || "").length
+    );
+
     throw new Error(
       "Financial extraction returned invalid JSON."
     );
   }
 
+
   if (
     !parsed ||
     !Array.isArray(parsed.rows)
   ) {
+    console.error(
+      "Financial extraction JSON did not contain a rows array."
+    );
+
+    console.error(
+      "Top-level JSON keys:",
+      parsed &&
+      typeof parsed === "object"
+        ? Object.keys(parsed)
+        : []
+    );
+
     throw new Error(
       "Financial extraction JSON is missing a rows array."
     );
   }
 
-  const csvRows = parsed.rows.map((item) => {
-    const fields = HEADER.map((column) => {
-      const value = item?.[column];
 
-      return value == null
-        ? ""
-        : String(value);
-    });
+  /* ============================================================
+     DEBUG STRUCTURE ONLY
+     No document values are printed.
+  ============================================================ */
 
-    return toCsvLine(fields);
-  });
+  console.log(
+    "Financial JSON rows received:",
+    parsed.rows.length
+  );
 
-  return [
-    toCsvLine(HEADER),
-    ...csvRows,
-  ].join("\n");
+
+  if (
+    parsed.rows.length > 0 &&
+    parsed.rows[0] &&
+    typeof parsed.rows[0] === "object"
+  ) {
+    console.log(
+      "First financial row keys:",
+      Object.keys(parsed.rows[0])
+    );
+
+    console.log(
+      "Expected CSV header count:",
+      HEADER.length
+    );
+  }
+
+
+  const csvRows =
+    parsed.rows.map(
+      (item) => {
+
+        const fields =
+          HEADER.map(
+            (column) => {
+
+              const value =
+                item?.[column];
+
+              return value == null
+                ? ""
+                : String(value);
+            }
+          );
+
+        return toCsvLine(
+          fields
+        );
+      }
+    );
+
+
+  const csv =
+    [
+      toCsvLine(HEADER),
+      ...csvRows,
+    ].join("\n");
+
+
+  console.log(
+    "Generated CSV length:",
+    csv.length
+  );
+
+  console.log(
+    "Generated CSV data rows:",
+    csvRows.length
+  );
+
+
+  return csv;
 }
+
 
 /* ============================================================
    USAGE TRACKING
@@ -180,10 +268,12 @@ async function recordSuccessfulUsage(
     return;
   }
 
+
   const currentMonth =
     new Date()
       .toISOString()
       .slice(0, 7);
+
 
   const {
     data: existingUsage,
@@ -199,12 +289,15 @@ async function recordSuccessfulUsage(
     )
     .maybeSingle();
 
+
   if (readError) {
     throw readError;
   }
 
+
   let conversions =
     successfulConversions;
+
 
   if (
     existingUsage &&
@@ -218,6 +311,7 @@ async function recordSuccessfulUsage(
       ) +
       successfulConversions;
   }
+
 
   const {
     error: upsertError,
@@ -239,6 +333,7 @@ async function recordSuccessfulUsage(
       }
     );
 
+
   if (upsertError) {
     throw upsertError;
   }
@@ -256,6 +351,7 @@ async function recordConversionHistory({
   processingMode,
   status,
 }) {
+
   const {
     error,
   } = await supabase
@@ -278,6 +374,7 @@ async function recordConversionHistory({
 
       status,
     });
+
 
   if (error) {
     throw error;
@@ -302,15 +399,116 @@ async function recordConversionHistory({
 router.post(
   "/",
 
+  /* ============================================================
+     DEBUG 1:
+     Confirms that this Render route was actually contacted.
+
+     This executes before multer processes the multipart body,
+     so req.body and req.files are not inspected here.
+  ============================================================ */
+
+  (req, res, next) => {
+
+    console.log(
+      "========================================"
+    );
+
+    console.log(
+      "=== EXTRACTION ROUTE HIT ==="
+    );
+
+    console.log(
+      "Time:",
+      new Date().toISOString()
+    );
+
+    console.log(
+      "Method:",
+      req.method
+    );
+
+    console.log(
+      "Path:",
+      req.originalUrl
+    );
+
+    console.log(
+      "Content-Type:",
+      req.headers["content-type"] ||
+      "unknown"
+    );
+
+    next();
+  },
+
+
+  /* ============================================================
+     PARSE UPLOADED FILES
+  ============================================================ */
+
   upload.array(
     "files",
     MAX_FILES_PER_BATCH
   ),
 
+
+  /* ============================================================
+     USAGE LIMIT
+  ============================================================ */
+
   checkUsageLimit,
 
+
+  /* ============================================================
+     EXTRACTION HANDLER
+  ============================================================ */
+
   async (req, res) => {
+
     try {
+
+      /* ========================================================
+         DEBUG 2:
+         Multipart body has now been processed.
+      ======================================================== */
+
+      console.log(
+        "=== UPLOAD PARSED ==="
+      );
+
+      console.log(
+        "Processing mode received:",
+        req.body?.processingMode ||
+        "(not supplied)"
+      );
+
+      console.log(
+        "Firebase UID supplied:",
+        Boolean(
+          req.body?.firebase_uid
+        )
+      );
+
+      console.log(
+        "Files received:",
+        Array.isArray(req.files)
+          ? req.files.length
+          : 0
+      );
+
+
+      if (
+        Array.isArray(req.files)
+      ) {
+        console.log(
+          "Uploaded filenames:",
+          req.files.map(
+            (file) =>
+              file.originalname
+          )
+        );
+      }
+
 
       /* ========================================================
          VALIDATE FILES
@@ -320,10 +518,16 @@ router.post(
         !Array.isArray(req.files) ||
         req.files.length === 0
       ) {
+
+        console.warn(
+          "Extraction stopped: no uploaded files were received."
+        );
+
         return res
           .status(400)
           .json({
             success: false,
+
             error:
               "No files uploaded.",
           });
@@ -344,10 +548,16 @@ router.post(
           .trim()
           .length === 0
       ) {
+
+        console.warn(
+          "Extraction stopped: firebase_uid missing."
+        );
+
         return res
           .status(400)
           .json({
             success: false,
+
             error:
               "Missing firebase_uid.",
           });
@@ -363,11 +573,23 @@ router.post(
         DEFAULT_PROCESSING_MODE;
 
 
+      console.log(
+        "Resolved processing mode:",
+        processingMode
+      );
+
+
       if (
         !SUPPORTED_PROCESSING_MODES.has(
           processingMode
         )
       ) {
+
+        console.warn(
+          "Unsupported processing mode:",
+          processingMode
+        );
+
         return res
           .status(400)
           .json({
@@ -389,6 +611,16 @@ router.post(
         );
 
 
+      console.log(
+        "Extraction prompt loaded."
+      );
+
+      console.log(
+        "Prompt length:",
+        prompt.length
+      );
+
+
       /* ========================================================
          PROCESS FILES
       ======================================================== */
@@ -405,6 +637,7 @@ router.post(
           file.originalname ||
           "document.pdf";
 
+
         const outputFileName =
           buildOutputFileName(
             inputFileName,
@@ -413,6 +646,39 @@ router.post(
 
 
         try {
+
+          console.log(
+            "----------------------------------------"
+          );
+
+          console.log(
+            "Beginning file:",
+            inputFileName
+          );
+
+          console.log(
+            "Input MIME type:",
+            file.mimetype ||
+            "unknown"
+          );
+
+          console.log(
+            "Input size:",
+            file.size ||
+            file.buffer?.length ||
+            0
+          );
+
+
+          /* ====================================================
+             DEBUG 3:
+             Confirm OpenAI call begins.
+          ==================================================== */
+
+          console.log(
+            "=== ABOUT TO CALL OPENAI ==="
+          );
+
 
           const rawContent =
             await extractDocument({
@@ -433,6 +699,28 @@ router.post(
 
 
           /* ====================================================
+             DEBUG 4:
+             Confirm OpenAI returned.
+
+             IMPORTANT:
+             We intentionally do NOT print rawContent because
+             uploaded documents may contain private information.
+          ==================================================== */
+
+          console.log(
+            "=== OPENAI RESPONSE RECEIVED ==="
+          );
+
+          console.log(
+            "OpenAI response length:",
+            String(
+              rawContent ||
+              ""
+            ).length
+          );
+
+
+          /* ====================================================
              MODE-AWARE VALIDATION
           ==================================================== */
 
@@ -441,38 +729,108 @@ router.post(
 
           let validation =
             null;
-			
-			
-		  if (
-			CSV_OUTPUT_MODES.has(
-			 processingMode
-			)
-		   ) {
 
-		const generatedCsv =
-		 financialJsonToCsv(
-		  rawContent
-		);
 
-		validation =
-		 validateCsv(
-		   generatedCsv
-		 );
+          if (
+            CSV_OUTPUT_MODES.has(
+              processingMode
+            )
+          ) {
 
-		finalContent =
-		  validation.cleanedCsv;
+            console.log(
+              "=== CONVERTING FINANCIAL JSON TO CSV ==="
+            );
 
-   
-		if (
-			!validation.valid
-			) {
 
-		console.warn(
-		`CSV validation issues for "${inputFileName}":`,
-			validation.errors
-			);
-		 }
-		}
+            const generatedCsv =
+              financialJsonToCsv(
+                rawContent
+              );
+
+
+            console.log(
+              "=== VALIDATING GENERATED CSV ==="
+            );
+
+
+            validation =
+              validateCsv(
+                generatedCsv
+              );
+
+
+            console.log(
+              "CSV validation valid:",
+              validation.valid
+            );
+
+            console.log(
+              "CSV validation errors:",
+              validation.errors.length
+            );
+
+            console.log(
+              "CSV validated rows:",
+              validation.rows.length
+            );
+
+            console.log(
+              "Cleaned CSV length:",
+              String(
+                validation.cleanedCsv ||
+                ""
+              ).length
+            );
+
+
+            finalContent =
+              validation.cleanedCsv;
+
+
+            if (
+              !validation.valid
+            ) {
+              console.warn(
+                `CSV validation issues for "${inputFileName}":`,
+                validation.errors
+              );
+            }
+          }
+
+
+          /* ====================================================
+             FINAL CONTENT DEBUG
+          ==================================================== */
+
+          console.log(
+            "Final output filename:",
+            outputFileName
+          );
+
+          console.log(
+            "Final content length:",
+            String(
+              finalContent ||
+              ""
+            ).length
+          );
+
+
+          if (
+            !finalContent ||
+            String(finalContent)
+              .trim()
+              .length === 0
+          ) {
+
+            console.error(
+              "FINAL CONTENT IS EMPTY."
+            );
+
+            throw new Error(
+              "Extraction produced empty final content."
+            );
+          }
 
 
           /* ====================================================
@@ -544,10 +902,16 @@ router.post(
           });
 
 
+          console.log(
+            `=== FILE COMPLETED: ${inputFileName} ===`
+          );
+
+
         } catch (fileError) {
 
           console.error(
             `Extraction failed for "${inputFileName}":`,
+            fileError?.message ||
             fileError
           );
 
@@ -611,6 +975,16 @@ router.post(
         results.length === 0
       ) {
 
+        console.error(
+          "=== EXTRACTION BATCH FAILED ==="
+        );
+
+        console.error(
+          "Failed files:",
+          errors.length
+        );
+
+
         return res
           .status(500)
           .json({
@@ -670,6 +1044,46 @@ router.post(
          RETURN BATCH RESPONSE
       ======================================================== */
 
+      console.log(
+        "=== EXTRACTION RESPONSE READY ==="
+      );
+
+      console.log(
+        "Total files:",
+        req.files.length
+      );
+
+      console.log(
+        "Successful files:",
+        results.length
+      );
+
+      console.log(
+        "Failed files:",
+        errors.length
+      );
+
+      console.log(
+        "Response content lengths:",
+        results.map(
+          (result) => ({
+            file:
+              result.outputFileName,
+
+            length:
+              String(
+                result.content ||
+                ""
+              ).length,
+          })
+        )
+      );
+
+      console.log(
+        "========================================"
+      );
+
+
       return res
         .status(200)
         .json({
@@ -699,7 +1113,11 @@ router.post(
     } catch (error) {
 
       console.error(
-        "Extraction route error:",
+        "=== EXTRACTION ROUTE ERROR ==="
+      );
+
+      console.error(
+        error?.message ||
         error
       );
 
