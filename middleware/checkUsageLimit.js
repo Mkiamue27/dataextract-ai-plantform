@@ -92,7 +92,7 @@ async function checkUsageLimit(
     if (subscriptionError) {
 
       console.error(
-        "Subscription lookup failed:",
+        "subscription lookup failed:",
         subscriptionError
       );
 
@@ -101,11 +101,11 @@ async function checkUsageLimit(
 
 
     console.log(
-      "Subscription lookup completed."
+      "subscription lookup completed."
     );
 
     console.log(
-      "Subscription found:",
+      "subscription found:",
       Boolean(subscription)
     );
 
