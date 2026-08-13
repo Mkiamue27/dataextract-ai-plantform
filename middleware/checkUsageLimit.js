@@ -50,7 +50,7 @@ async function checkUsageLimit(
       data: subscription,
       error: subscriptionError,
     } = await supabase
-      .from("Subscriptions")
+      .from("subscriptions")
       .select(
         "status, plan_name"
       )
