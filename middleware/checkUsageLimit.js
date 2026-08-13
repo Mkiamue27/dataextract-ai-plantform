@@ -20,24 +20,47 @@ async function checkUsageLimit(
   res,
   next
 ) {
+
+  console.log(
+    "=== CHECK USAGE LIMIT STARTED ==="
+  );
+
+
   const {
     firebase_uid,
-  } = req.body;
+  } = req.body || {};
 
 
   /* ============================================================
      VALIDATE FIREBASE UID
   ============================================================ */
 
- if (
-  !firebase_uid ||
-  firebase_uid.trim().length === 0
-) {
-  return res.status(400).json({
-    success: false,
-    error: "Missing firebase_uid",
-  });
-}
+  if (
+    !firebase_uid ||
+    firebase_uid.trim().length === 0
+  ) {
+
+    console.warn(
+      "Usage check stopped: firebase_uid missing."
+    );
+
+    return res
+      .status(400)
+      .json({
+        success: false,
+        error: "Missing firebase_uid",
+      });
+  }
+
+
+  const cleanFirebaseUid =
+    firebase_uid.trim();
+
+
+  console.log(
+    "Firebase UID received:",
+    Boolean(cleanFirebaseUid)
+  );
 
 
   try {
@@ -45,6 +68,11 @@ async function checkUsageLimit(
     /* ============================================================
        GET CURRENT SUBSCRIPTION
     ============================================================ */
+
+    console.log(
+      "Looking up subscriptions table..."
+    );
+
 
     const {
       data: subscription,
@@ -56,15 +84,35 @@ async function checkUsageLimit(
       )
       .eq(
         "firebase_uid",
-        firebase_uid.trim()
+        cleanFirebaseUid
       )
       .maybeSingle();
 
 
     if (subscriptionError) {
+
+      console.error(
+        "Subscription lookup failed:",
+        subscriptionError
+      );
+
       throw subscriptionError;
     }
 
+
+    console.log(
+      "Subscription lookup completed."
+    );
+
+    console.log(
+      "Subscription found:",
+      Boolean(subscription)
+    );
+
+
+    /* ============================================================
+       DETERMINE CURRENT PLAN
+    ============================================================ */
 
     const currentPlan =
       subscription &&
@@ -77,6 +125,12 @@ async function checkUsageLimit(
             "free"
           )
         : "free";
+
+
+    console.log(
+      "Resolved plan:",
+      currentPlan
+    );
 
 
     /* ============================================================
@@ -92,11 +146,20 @@ async function checkUsageLimit(
         : PLAN_LIMITS.free;
 
 
+    console.log(
+      "Resolved plan limit:",
+      planLimit === Infinity
+        ? "unlimited"
+        : planLimit
+    );
+
+
     /*
      * Infinity means the current plan has
      * no conversion cap.
      */
     if (planLimit === Infinity) {
+
       req.currentPlan =
         currentPlan;
 
@@ -105,6 +168,11 @@ async function checkUsageLimit(
 
       req.usageLimit =
         null;
+
+
+      console.log(
+        "Unlimited plan. Usage check passed."
+      );
 
       return next();
     }
@@ -124,6 +192,11 @@ async function checkUsageLimit(
        GET CURRENT USAGE
     ============================================================ */
 
+    console.log(
+      "Looking up usage table..."
+    );
+
+
     const {
       data: usage,
       error: usageError,
@@ -134,14 +207,25 @@ async function checkUsageLimit(
       )
       .eq(
         "firebase_uid",
-        firebase_uid.trim()
+        cleanFirebaseUid
       )
       .maybeSingle();
 
 
     if (usageError) {
+
+      console.error(
+        "Usage lookup failed:",
+        usageError
+      );
+
       throw usageError;
     }
+
+
+    console.log(
+      "Usage lookup completed."
+    );
 
 
     let currentUsage = 0;
@@ -151,11 +235,18 @@ async function checkUsageLimit(
       usage &&
       usage.month === currentMonth
     ) {
+
       currentUsage =
         Number(
           usage.conversions || 0
         );
     }
+
+
+    console.log(
+      "Current monthly usage:",
+      currentUsage
+    );
 
 
     /* ============================================================
@@ -168,13 +259,26 @@ async function checkUsageLimit(
         : 0;
 
 
+    console.log(
+      "Incoming files:",
+      incomingFilesCount
+    );
+
+
     if (
       incomingFilesCount <= 0
     ) {
-      return res.status(400).json({
-        success: false,
-        error: "No files uploaded.",
-      });
+
+      console.warn(
+        "Usage check stopped: no files received."
+      );
+
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "No files uploaded.",
+        });
     }
 
 
@@ -185,6 +289,12 @@ async function checkUsageLimit(
     const projectedUsage =
       currentUsage +
       incomingFilesCount;
+
+
+    console.log(
+      "Projected usage:",
+      projectedUsage
+    );
 
 
     if (
@@ -200,35 +310,42 @@ async function checkUsageLimit(
         );
 
 
-      return res.status(403).json({
-        success: false,
+      console.warn(
+        "Usage limit reached."
+      );
 
-        error:
-          "Limit reached",
 
-        message:
-          `You have ${remaining} extraction(s) remaining this month, ` +
-          `but you uploaded ${incomingFilesCount} file(s). ` +
-          `Please reduce the batch size or upgrade your plan.`,
+      return res
+        .status(403)
+        .json({
+          success: false,
 
-        limitReached:
-          true,
+          error:
+            "Limit reached",
 
-        plan:
-          currentPlan,
+          message:
+            `You have ${remaining} extraction(s) remaining this month, ` +
+            `but you uploaded ${incomingFilesCount} file(s). ` +
+            `Please reduce the batch size or upgrade your plan.`,
 
-        currentUsage,
+          limitReached:
+            true,
 
-        limit:
-          planLimit,
+          plan:
+            currentPlan,
 
-        incomingFiles:
-          incomingFilesCount,
+          currentUsage,
 
-        projectedUsage,
+          limit:
+            planLimit,
 
-        remaining,
-      });
+          incomingFiles:
+            incomingFilesCount,
+
+          projectedUsage,
+
+          remaining,
+        });
     }
 
 
@@ -249,14 +366,36 @@ async function checkUsageLimit(
       projectedUsage;
 
 
+    console.log(
+      "=== USAGE CHECK PASSED ==="
+    );
+
+
     return next();
 
 
   } catch (error) {
 
     console.error(
-      "Usage limit verification error:",
+      "=== USAGE LIMIT VERIFICATION ERROR ==="
+    );
+
+    console.error(
+      "Message:",
+      error?.message ||
       error
+    );
+
+    console.error(
+      "Code:",
+      error?.code ||
+      "none"
+    );
+
+    console.error(
+      "Details:",
+      error?.details ||
+      "none"
     );
 
 
@@ -264,6 +403,7 @@ async function checkUsageLimit(
       .status(500)
       .json({
         success: false,
+
         error:
           "Usage verification failed.",
       });
