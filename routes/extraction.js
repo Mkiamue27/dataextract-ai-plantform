@@ -56,7 +56,6 @@ const upload = multer({
 /* ============================================================
    CSV OUTPUT MODES
 
-   NOTE:
    ai_table is intentionally NOT included here because
    validateCsvOutput.js expects the fixed 21-column financial
    schema. AI table detection may return arbitrary columns.
@@ -178,11 +177,6 @@ function financialJsonToCsv(
     );
   }
 
-
-  /* ============================================================
-     DEBUG STRUCTURE ONLY
-     No document values are printed.
-  ============================================================ */
 
   console.log(
     "Financial JSON rows received:",
@@ -384,27 +378,15 @@ async function recordConversionHistory({
 
 /* ============================================================
    POST /extract
-
-   Supports:
-   - One file
-   - Multiple files
-   - Usage-limit middleware
-   - Mode-aware prompts
-   - Mode-aware validation
-   - Partial batch success
-   - Usage recording
-   - Conversion history recording
 ============================================================ */
 
 router.post(
+
   "/",
 
   /* ============================================================
-     DEBUG 1:
-     Confirms that this Render route was actually contacted.
-
-     This executes before multer processes the multipart body,
-     so req.body and req.files are not inspected here.
+     DEBUG CHECKPOINT 1
+     Confirms FlutterFlow reached this Render route.
   ============================================================ */
 
   (req, res, next) => {
@@ -443,13 +425,85 @@ router.post(
 
 
   /* ============================================================
-     PARSE UPLOADED FILES
+     MULTER FILE PARSING
   ============================================================ */
 
   upload.array(
     "files",
     MAX_FILES_PER_BATCH
   ),
+
+
+  /* ============================================================
+     DEBUG CHECKPOINT 2
+     Confirms Multer successfully parsed the multipart request.
+  ============================================================ */
+
+  (req, res, next) => {
+
+    console.log(
+      "=== MULTER FINISHED ==="
+    );
+
+    console.log(
+      "Files after multer:",
+      Array.isArray(req.files)
+        ? req.files.length
+        : 0
+    );
+
+    console.log(
+      "Body keys:",
+      Object.keys(
+        req.body || {}
+      )
+    );
+
+
+    if (
+      Array.isArray(req.files)
+    ) {
+      console.log(
+        "Parsed filenames:",
+        req.files.map(
+          (file) =>
+            file.originalname
+        )
+      );
+    }
+
+
+    next();
+  },
+
+
+  /* ============================================================
+     DEBUG CHECKPOINT 3
+     Shows request immediately before usage-limit middleware.
+  ============================================================ */
+
+  (req, res, next) => {
+
+    console.log(
+      "=== ABOUT TO CHECK USAGE LIMIT ==="
+    );
+
+    console.log(
+      "firebase_uid present:",
+      Boolean(
+        req.body?.firebase_uid
+      )
+    );
+
+    console.log(
+      "processingMode present:",
+      Boolean(
+        req.body?.processingMode
+      )
+    );
+
+    next();
+  },
 
 
   /* ============================================================
@@ -460,17 +514,27 @@ router.post(
 
 
   /* ============================================================
+     DEBUG CHECKPOINT 4
+     If this appears, checkUsageLimit allowed the request through.
+  ============================================================ */
+
+  (req, res, next) => {
+
+    console.log(
+      "=== USAGE LIMIT PASSED ==="
+    );
+
+    next();
+  },
+
+
+  /* ============================================================
      EXTRACTION HANDLER
   ============================================================ */
 
   async (req, res) => {
 
     try {
-
-      /* ========================================================
-         DEBUG 2:
-         Multipart body has now been processed.
-      ======================================================== */
 
       console.log(
         "=== UPLOAD PARSED ==="
@@ -497,19 +561,6 @@ router.post(
       );
 
 
-      if (
-        Array.isArray(req.files)
-      ) {
-        console.log(
-          "Uploaded filenames:",
-          req.files.map(
-            (file) =>
-              file.originalname
-          )
-        );
-      }
-
-
       /* ========================================================
          VALIDATE FILES
       ======================================================== */
@@ -527,7 +578,6 @@ router.post(
           .status(400)
           .json({
             success: false,
-
             error:
               "No files uploaded.",
           });
@@ -535,7 +585,7 @@ router.post(
 
 
       /* ========================================================
-         READ FIREBASE UID
+         FIREBASE UID
       ======================================================== */
 
       const firebaseUid =
@@ -557,7 +607,6 @@ router.post(
           .status(400)
           .json({
             success: false,
-
             error:
               "Missing firebase_uid.",
           });
@@ -565,7 +614,7 @@ router.post(
 
 
       /* ========================================================
-         READ PROCESSING MODE
+         PROCESSING MODE
       ======================================================== */
 
       const processingMode =
@@ -594,7 +643,6 @@ router.post(
           .status(400)
           .json({
             success: false,
-
             error:
               `Unsupported processing mode: ${processingMode}`,
           });
@@ -602,7 +650,7 @@ router.post(
 
 
       /* ========================================================
-         GET MODE PROMPT
+         GET EXTRACTION PROMPT
       ======================================================== */
 
       const prompt =
@@ -671,8 +719,7 @@ router.post(
 
 
           /* ====================================================
-             DEBUG 3:
-             Confirm OpenAI call begins.
+             OPENAI CALL
           ==================================================== */
 
           console.log(
@@ -697,15 +744,6 @@ router.post(
               prompt,
             });
 
-
-          /* ====================================================
-             DEBUG 4:
-             Confirm OpenAI returned.
-
-             IMPORTANT:
-             We intentionally do NOT print rawContent because
-             uploaded documents may contain private information.
-          ==================================================== */
 
           console.log(
             "=== OPENAI RESPONSE RECEIVED ==="
@@ -799,7 +837,7 @@ router.post(
 
 
           /* ====================================================
-             FINAL CONTENT DEBUG
+             FINAL OUTPUT CHECK
           ==================================================== */
 
           console.log(
@@ -916,10 +954,6 @@ router.post(
           );
 
 
-          /* ====================================================
-             RECORD FAILED HISTORY
-          ==================================================== */
-
           try {
 
             await recordConversionHistory({
@@ -968,7 +1002,7 @@ router.post(
 
 
       /* ========================================================
-         HANDLE TOTAL FAILURE
+         TOTAL FAILURE
       ======================================================== */
 
       if (
@@ -1015,8 +1049,6 @@ router.post(
 
       /* ========================================================
          RECORD SUCCESSFUL USAGE
-
-         Only successful files count toward usage.
       ======================================================== */
 
       try {
@@ -1032,16 +1064,11 @@ router.post(
           "Failed to record usage:",
           usageError
         );
-
-        /*
-         * Do not destroy an otherwise successful extraction
-         * because usage bookkeeping failed.
-         */
       }
 
 
       /* ========================================================
-         RETURN BATCH RESPONSE
+         RESPONSE
       ======================================================== */
 
       console.log(
