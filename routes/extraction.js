@@ -58,7 +58,7 @@ const upload = multer({
 
    NOTE:
    ai_table is intentionally NOT included here because
-   validateCsvOutput.js expects the fixed 13-column financial
+   validateCsvOutput.js expects the fixed 21-column financial
    schema. AI table detection may return arbitrary columns.
 ============================================================ */
 
