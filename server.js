@@ -121,7 +121,7 @@ async function upsertSubscription(
 
   const { error } =
     await supabase
-      .from("Subscriptions")
+      .from("subscriptions")
       .upsert(
         payload,
         {
@@ -406,7 +406,7 @@ app.get(
         error,
       } =
         await supabase
-          .from("Subscriptions")
+          .from("subscriptions")
           .select(
             "plan_name, status, current_period_end, cancel_at_period_end"
           )
@@ -497,7 +497,7 @@ app.get(
         data: subscription,
         error: subscriptionError,
       } = await supabase
-        .from("Subscriptions")
+        .from("subscriptions")
         .select("status, plan_name")
         .eq("firebase_uid", uid)
         .maybeSingle();
