@@ -494,13 +494,15 @@ app.get(
     try {
       // Get subscription
       const {
-        data: subscription,
-        error: subscriptionError,
-      } = await supabase
-        .from("subscriptions")
-        .select("status, plan_name")
-        .eq("firebase_uid", uid)
-        .maybeSingle();
+  data: subscription,
+  error: subscriptionError,
+} = await supabase
+  .from("subscriptions")
+  .select("status, plan_name, created_at")
+  .eq("firebase_uid", uid)
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
       if (subscriptionError) {
         throw subscriptionError;
