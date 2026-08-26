@@ -23,14 +23,18 @@ GENERAL RULES:
 - Prefer values explicitly printed in the source document.
 - Leave unknown fields blank.
 - Preserve dates as they appear in the document whenever possible.
-- Preserve negative monetary values for refunds, credits, discounts, and adjustments.
-- Do not confuse account numbers, invoice numbers, CPT codes, ZIP codes,
-  phone numbers, or other identifiers with monetary values.
-- Monetary values must contain only numeric values when structured output requires them.
+- Preserve negative monetary values for refunds, credits, discounts,
+  withdrawals, and adjustments.
+- Do not confuse account numbers, invoice numbers, claim numbers,
+  CPT codes, ZIP codes, phone numbers, or other identifiers with
+  monetary values.
+- Monetary values must contain only numeric values when structured
+  output requires them.
 - Remove unnecessary formatting noise.
-- Preserve important document-level summary values even when transaction
-  or service line items are also present.
-- Do not include explanations, commentary, Markdown, or code fences unless specifically requested.
+- Preserve important document-level summary values even when
+  transaction or service line items are also present.
+- Do not include explanations, commentary, Markdown, or code fences
+  unless specifically requested.
 `;
 
 
@@ -43,63 +47,204 @@ ${BASE_RULES}
 
 Analyze the uploaded financial document.
 
-The document may be an:
+First determine the document type.
 
-- Invoice
-- Receipt
-- Bank statement
-- Medical bill
+Use exactly ONE of these documentType values:
+
+- bank_statement
+- invoice
+- medical_bill
+- receipt
+- generic_financial
+
+
+DOCUMENT CLASSIFICATION RULES:
+
+Use "bank_statement" for:
+- Bank statements
+- Checking account statements
+- Savings account statements
+- Credit union account statements
+- Transaction account statements
+- Similar account statements containing deposits, withdrawals,
+  debits, credits, transactions, or account balances
+
+Use "invoice" for:
+- Invoices
+- Vendor bills
+- Commercial billing statements
+- Statements requesting payment for goods or services
+- Similar invoice-style documents
+
+Use "medical_bill" for:
+- Medical bills
+- Healthcare statements
 - Explanation of Benefits (EOB)
-- Financial statement
-- Billing statement
-- Transaction report
-- Similar financial document
+- Patient billing statements
+- Provider statements
+- Similar healthcare financial documents
 
-Extract:
+Use "receipt" for:
+- Purchase receipts
+- Sales receipts
+- Store receipts
+- Restaurant receipts
+- Payment receipts
+- Similar point-of-sale documents
 
-1. Every identifiable transactional or service line item.
-2. Important document-level financial summary values.
-3. Important document-level issuer/provider information.
+Use "generic_financial" only when the document is clearly financial
+but does not reliably fit one of the categories above.
 
-Document-level financial values may include, when explicitly shown:
 
-- Subtotal
-- Total Amount
-- Amount Due
-- Amount Due Now
-- Current Balance
-- Previous Balance
-- Payments/Credits
-- Total Adjustments
-- Taxes
-- Discounts
-- Insurance Payments
-- Patient Responsibility
-- Other stated summary amounts
+IMPORTANT:
 
-Return ONLY valid JSON in this exact structure:
+Return ONLY valid JSON.
+
+The top-level JSON structure MUST be:
 
 {
+  "documentType": "",
+  "rows": []
+}
+
+The value of "documentType" determines the exact structure of every
+object inside "rows".
+
+Do not mix schemas.
+
+Do not add properties that are not part of the selected schema.
+
+
+============================================================
+BANK STATEMENT SCHEMA
+============================================================
+
+If documentType is "bank_statement", return:
+
+{
+  "documentType": "bank_statement",
   "rows": [
     {
-      "Document Type": "",
-      "Provider/Issuer Name": "",
-      "Document/Account ID": "",
+      "Bank/Institution Name": "",
+      "Account ID": "",
+      "Statement Period": "",
+      "Beginning Balance": "",
+      "Ending Balance": "",
       "Transaction Date": "",
+      "Description": "",
+      "Debit": "",
+      "Credit": "",
+      "Transaction Amount": "",
+      "Running Balance": "",
+      "Total Deposits": "",
+      "Total Withdrawals": "",
+      "Currency": ""
+    }
+  ]
+}
+
+BANK STATEMENT RULES:
+
+- Return one row for each identifiable transaction.
+
+- Repeat applicable document-level information on each transaction row.
+
+- "Bank/Institution Name" must contain the explicitly identified bank,
+  credit union, or financial institution.
+
+- "Account ID" must contain the account number or account identifier
+  when shown.
+
+- Preserve masked account identifiers as shown.
+
+- "Statement Period" must contain the explicitly stated statement
+  period or date range when shown.
+
+- "Beginning Balance" must contain the explicitly stated opening,
+  beginning, or previous statement balance when it represents the
+  beginning balance for the statement period.
+
+- "Ending Balance" must contain the explicitly stated ending,
+  closing, or new balance for the statement period.
+
+- "Transaction Date" must contain the transaction or posting date
+  associated with the transaction.
+
+- "Description" must contain the transaction description,
+  merchant/payee, memo, or other meaningful transaction text.
+
+- "Debit" must contain an explicitly identifiable debit,
+  withdrawal, charge, payment out, or money-out amount.
+
+- "Credit" must contain an explicitly identifiable credit,
+  deposit, refund, payment in, or money-in amount.
+
+- "Transaction Amount" should contain the transaction amount when
+  the document presents transactions in a single amount column or
+  when the amount is explicitly shown separately from debit/credit.
+
+- Do not duplicate the same transaction amount into Debit, Credit,
+  and Transaction Amount unless the source structure genuinely
+  supports those fields separately.
+
+- "Running Balance" must contain the balance associated with the
+  individual transaction when explicitly shown.
+
+- "Total Deposits" must contain the explicitly stated statement-level
+  deposit or credit total when shown.
+
+- "Total Withdrawals" must contain the explicitly stated statement-level
+  withdrawal or debit total when shown.
+
+- If the statement contains summary balances but no identifiable
+  transaction rows, return one summary row and leave transaction-specific
+  fields blank.
+
+- Do not calculate Beginning Balance, Ending Balance, Running Balance,
+  Total Deposits, or Total Withdrawals when they are not explicitly
+  stated.
+
+- Beginning Balance,
+  Ending Balance,
+  Debit,
+  Credit,
+  Transaction Amount,
+  Running Balance,
+  Total Deposits,
+  and Total Withdrawals
+  must contain numeric monetary values only when populated.
+
+- Do not include currency symbols in monetary fields.
+
+- Preserve negative signs when explicitly shown.
+
+- Monetary values must use exactly two decimal places when a value exists.
+
+
+============================================================
+INVOICE SCHEMA
+============================================================
+
+If documentType is "invoice", return:
+
+{
+  "documentType": "invoice",
+  "rows": [
+    {
+      "Vendor/Issuer Name": "",
+      "Invoice Number": "",
+      "Invoice Date": "",
+      "Due Date": "",
       "Line Item Description": "",
       "Quantity": "",
-      "CPT/Procedure Code": "",
-      "Gross Amount": "",
-      "Adjustments/Discounts/Tax": "",
-      "Net Responsibility": "",
+      "Unit Price": "",
+      "Discount": "",
+      "Tax": "",
+      "Line Total": "",
       "Subtotal": "",
       "Total Amount": "",
+      "Amount Paid": "",
       "Amount Due": "",
-      "Amount Due Now": "",
-      "Current Balance": "",
-      "Previous Balance": "",
-      "Payments/Credits": "",
-      "Patient Responsibility": "",
       "Currency": "",
       "Issuer Contact Phone": "",
       "Issuer Mailing Address": ""
@@ -107,142 +252,366 @@ Return ONLY valid JSON in this exact structure:
   ]
 }
 
-RULES:
+INVOICE RULES:
 
-- Return one object for each identifiable transaction, charge, payment,
-  adjustment, refund, service, or line item.
+- Return one row for each identifiable invoice line item.
 
-- Use exactly the 21 property names shown above.
+- Repeat applicable document-level information and financial summary
+  values on each row.
 
-- Do not add extra properties.
+- "Vendor/Issuer Name" must contain the company, organization,
+  provider, or person issuing the invoice.
 
-- Repeat document-level issuer/provider information on each applicable row.
+- "Invoice Number" must contain the explicitly stated invoice number
+  or invoice identifier.
 
-- Repeat applicable document-level financial summary values on each row
-  belonging to the same document.
+- "Invoice Date" must contain the explicitly stated invoice date.
 
-- For example, if a medical bill explicitly states:
-  "Total: $858.44"
-  and
-  "Amount Due Now: $858.44",
-  then populate:
-  "Total Amount": "858.44"
-  and
-  "Amount Due Now": "858.44"
-  on each applicable row for that document.
+- "Due Date" must contain the explicitly stated payment due date.
 
-- Do NOT derive Total Amount by adding line items when a total is not
-  explicitly stated in the source document.
+- "Line Item Description" must contain the product, service,
+  fee, charge, or other line-item description.
 
-- Do NOT assume Amount Due and Amount Due Now are the same unless the
-  document explicitly supports both values.
+- "Quantity" must contain only numeric quantity values when available.
 
-- Do NOT treat individual transaction amounts as document totals.
+- "Unit Price" must contain the explicitly stated unit price.
 
-- Do NOT treat a payment-plan installment amount as the total balance
-  unless the document explicitly labels it as the total.
+- "Discount" must contain an explicitly stated line-level or
+  applicable discount.
 
-- Leave unknown values as empty strings.
+- "Tax" must contain an explicitly stated tax value.
 
-- Do not invent missing information.
+- "Line Total" must contain the explicitly stated total for the
+  individual line item.
 
-- Preserve commas and punctuation normally inside text values.
+- "Subtotal" must contain the explicitly stated invoice subtotal.
 
-- If the document contains important financial summary values but has no
-  identifiable line items, return one summary row so those values are not lost.
-  In that case, leave line-item-specific fields blank.
+- "Total Amount" must contain the explicitly stated invoice total.
 
-FIELD RULES:
+- "Amount Paid" must contain an explicitly stated paid amount,
+  payment, or credit applied toward the invoice.
 
-- Quantity must contain only numeric values when available.
+- "Amount Due" must contain the explicitly stated remaining amount due.
 
-- CPT/Procedure Code must contain only legitimate procedure or HCPCS codes.
+- If the invoice contains important summary values but no identifiable
+  line items, return one summary row.
 
-- Descriptive labels such as "New Patient", "Established Patient",
-  "Level IV", "Level V", or similar text belong inside
-  "Line Item Description".
+- Do not calculate totals when the source does not explicitly provide them.
 
-- Gross Amount must represent the original line-item charge when shown.
-
-- Adjustments/Discounts/Tax must represent a line-level adjustment,
-  discount, tax, contractual adjustment, or similar value when shown.
-
-- Net Responsibility must represent the applicable line-level remaining
-  responsibility when shown.
-
-- Subtotal must contain the document-level subtotal only when explicitly shown.
-
-- Total Amount must contain the document-level total only when explicitly shown.
-
-- Amount Due must contain the explicitly stated amount due when shown.
-
-- Amount Due Now must contain the explicitly stated amount due now,
-  current amount due, or equivalent immediate-payment amount when shown.
-
-- Current Balance must contain the explicitly stated current or remaining
-  balance when shown.
-
-- Previous Balance must contain the explicitly stated prior or previous
-  balance when shown.
-
-- Payments/Credits must contain explicitly stated document-level payments,
-  credits, or payment/credit totals when shown.
-
-- Patient Responsibility must contain the explicitly stated patient
-  responsibility or patient balance when shown.
-
-- Gross Amount,
-  Adjustments/Discounts/Tax,
-  Net Responsibility,
+- Unit Price,
+  Discount,
+  Tax,
+  Line Total,
   Subtotal,
   Total Amount,
-  Amount Due,
-  Amount Due Now,
-  Current Balance,
-  Previous Balance,
-  Payments/Credits,
-  and Patient Responsibility
-  must contain numeric monetary values only.
-
-- Monetary values must use exactly two decimal places when a value exists.
+  Amount Paid,
+  and Amount Due
+  must contain numeric monetary values only when populated.
 
 - Do not include currency symbols in monetary fields.
 
-- Preserve negative signs for negative values.
+- Monetary values must use exactly two decimal places when a value exists.
 
-- Currency should use codes such as USD, CAD, EUR, or GBP when identifiable.
 
-- Infer USD only when the document clearly establishes a U.S. context
-  and no conflicting currency is shown.
+============================================================
+MEDICAL BILL / EOB SCHEMA
+============================================================
 
-IMPORTANT FINANCIAL ACCURACY RULES:
+If documentType is "medical_bill", return:
 
-- Prefer explicitly labeled summary values over inferred calculations.
+{
+  "documentType": "medical_bill",
+  "rows": [
+    {
+      "Provider Name": "",
+      "Account/Claim ID": "",
+      "Service Date": "",
+      "Line Item Description": "",
+      "CPT/HCPCS Code": "",
+      "Quantity": "",
+      "Gross Charge": "",
+      "Adjustment/Discount": "",
+      "Insurance Payment": "",
+      "Patient Responsibility": "",
+      "Line Balance": "",
+      "Total Charges": "",
+      "Total Adjustments": "",
+      "Total Insurance Payments": "",
+      "Total Patient Responsibility": "",
+      "Amount Due": "",
+      "Currency": "",
+      "Provider Contact Phone": "",
+      "Provider Mailing Address": ""
+    }
+  ]
+}
 
-- Never calculate a document total from extracted rows unless the source
-  document itself explicitly provides that total.
+MEDICAL BILL RULES:
 
-- Never substitute Gross Amount, Net Responsibility, or a line-item value
-  for Total Amount.
+- Return one row for each identifiable medical service,
+  procedure, charge, adjustment, or applicable service line.
 
-- Never omit an explicitly stated document-level total simply because
-  individual transaction rows were extracted.
+- Repeat applicable document-level information and summary values
+  on each row.
 
-- If multiple totals appear with different labels, preserve each value in
-  its corresponding field.
+- "Provider Name" must contain the healthcare provider,
+  facility, physician group, insurer, or issuer as appropriate.
 
-- If a document shows both "Total" and "Amount Due Now", capture both.
+- "Account/Claim ID" must contain the patient account number,
+  claim number, statement identifier, or similar financial identifier
+  when explicitly shown.
 
-- If the document states a zero value, preserve "0.00" rather than leaving
-  the field blank.
+- "Service Date" must contain the applicable date of service.
 
-OUTPUT RULES:
+- "Line Item Description" must contain the service or procedure
+  description.
+
+- "CPT/HCPCS Code" must contain only legitimate procedure,
+  CPT, or HCPCS codes.
+
+- Descriptive text such as "New Patient", "Established Patient",
+  "Level IV", or "Level V" belongs in "Line Item Description",
+  not "CPT/HCPCS Code".
+
+- "Quantity" must contain only numeric quantity values when available.
+
+- "Gross Charge" must contain the original service charge when shown.
+
+- "Adjustment/Discount" must contain the applicable contractual
+  adjustment, write-off, discount, or similar line-level value.
+
+- "Insurance Payment" must contain an explicitly stated insurer,
+  plan, or payer payment applicable to the service line.
+
+- "Patient Responsibility" must contain the explicitly stated
+  patient responsibility applicable to the service line.
+
+- "Line Balance" must contain the explicitly stated remaining
+  balance for the individual service line when shown.
+
+- "Total Charges" must contain the explicitly stated document-level
+  total charges.
+
+- "Total Adjustments" must contain the explicitly stated document-level
+  adjustment total.
+
+- "Total Insurance Payments" must contain the explicitly stated
+  document-level insurance payment total.
+
+- "Total Patient Responsibility" must contain the explicitly stated
+  document-level patient responsibility total.
+
+- "Amount Due" must contain the explicitly stated amount currently due.
+
+- If the document contains summary values but no identifiable service
+  lines, return one summary row.
+
+- Do not calculate totals from service rows unless the document itself
+  explicitly provides those totals.
+
+- Gross Charge,
+  Adjustment/Discount,
+  Insurance Payment,
+  Patient Responsibility,
+  Line Balance,
+  Total Charges,
+  Total Adjustments,
+  Total Insurance Payments,
+  Total Patient Responsibility,
+  and Amount Due
+  must contain numeric monetary values only when populated.
+
+- Do not include currency symbols in monetary fields.
+
+- Monetary values must use exactly two decimal places when a value exists.
+
+
+============================================================
+RECEIPT SCHEMA
+============================================================
+
+If documentType is "receipt", return:
+
+{
+  "documentType": "receipt",
+  "rows": [
+    {
+      "Merchant Name": "",
+      "Transaction Date": "",
+      "Receipt/Transaction ID": "",
+      "Item Description": "",
+      "Quantity": "",
+      "Unit Price": "",
+      "Discount": "",
+      "Tax": "",
+      "Line Total": "",
+      "Subtotal": "",
+      "Total Amount": "",
+      "Payment Method": "",
+      "Currency": "",
+      "Merchant Contact Phone": "",
+      "Merchant Address": ""
+    }
+  ]
+}
+
+RECEIPT RULES:
+
+- Return one row for each identifiable purchased item or service.
+
+- Repeat applicable receipt-level information and totals on each row.
+
+- "Merchant Name" must contain the merchant, store,
+  restaurant, vendor, or service provider.
+
+- "Transaction Date" must contain the purchase or transaction date.
+
+- "Receipt/Transaction ID" must contain the receipt number,
+  transaction number, order number, or similar identifier when shown.
+
+- "Item Description" must contain the purchased product or service.
+
+- "Quantity" must contain only numeric quantity values when available.
+
+- "Unit Price" must contain the explicitly stated unit price.
+
+- "Discount" must contain the explicitly stated applicable discount.
+
+- "Tax" must contain the explicitly stated tax.
+
+- "Line Total" must contain the explicitly stated total for the
+  individual item or service.
+
+- "Subtotal" must contain the explicitly stated receipt subtotal.
+
+- "Total Amount" must contain the explicitly stated final receipt total.
+
+- "Payment Method" must contain the explicitly identified payment
+  method when shown.
+
+- If the receipt contains summary values but no identifiable item rows,
+  return one summary row.
+
+- Do not calculate missing totals.
+
+- Unit Price,
+  Discount,
+  Tax,
+  Line Total,
+  Subtotal,
+  and Total Amount
+  must contain numeric monetary values only when populated.
+
+- Do not include currency symbols in monetary fields.
+
+- Monetary values must use exactly two decimal places when a value exists.
+
+
+============================================================
+GENERIC FINANCIAL SCHEMA
+============================================================
+
+If documentType is "generic_financial", return:
+
+{
+  "documentType": "generic_financial",
+  "rows": [
+    {
+      "Issuer Name": "",
+      "Document ID": "",
+      "Document Date": "",
+      "Line Item Description": "",
+      "Amount": "",
+      "Subtotal": "",
+      "Total Amount": "",
+      "Amount Paid": "",
+      "Amount Due": "",
+      "Balance": "",
+      "Currency": "",
+      "Issuer Contact Phone": "",
+      "Issuer Mailing Address": ""
+    }
+  ]
+}
+
+GENERIC FINANCIAL RULES:
+
+- Use this schema only when the document cannot reliably be classified
+  as bank_statement, invoice, medical_bill, or receipt.
+
+- Return one row for each meaningful financial line item when available.
+
+- Repeat applicable document-level information and summary values
+  on each row.
+
+- Preserve explicitly stated document totals, amounts paid,
+  amounts due, and balances.
+
+- Do not calculate missing totals or balances.
+
+- Amount,
+  Subtotal,
+  Total Amount,
+  Amount Paid,
+  Amount Due,
+  and Balance
+  must contain numeric monetary values only when populated.
+
+- Do not include currency symbols in monetary fields.
+
+- Monetary values must use exactly two decimal places when a value exists.
+
+
+============================================================
+GLOBAL FINANCIAL OUTPUT RULES
+============================================================
 
 - Return ONLY valid JSON.
+
 - Do not return CSV.
+
 - Do not return Markdown.
+
 - Do not wrap the response in a code block.
+
 - Do not include explanations or commentary.
+
+- "documentType" must be exactly one of:
+
+  bank_statement
+  invoice
+  medical_bill
+  receipt
+  generic_financial
+
+- Every object inside "rows" must use exactly the property names
+  defined for the selected documentType.
+
+- Do not mix properties from different schemas.
+
+- Do not add extra properties.
+
+- Leave unknown values as empty strings.
+
+- Never invent missing information.
+
+- Preserve zero values as "0.00" when explicitly stated.
+
+- Preserve negative signs for explicitly negative monetary values.
+
+- Currency should use codes such as USD, CAD, EUR, or GBP
+  when identifiable.
+
+- Infer USD only when the document clearly establishes a U.S.
+  context and no conflicting currency is shown.
+
+- Prefer explicitly labeled values over inferred calculations.
+
+- Never substitute an individual transaction or line-item amount
+  for a document-level total.
+
+- Never omit an explicitly stated document-level total simply
+  because individual rows were extracted.
 `;
 
 
