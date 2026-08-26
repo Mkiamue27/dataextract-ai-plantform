@@ -1,35 +1,236 @@
 /**
  * validateCsvOutput.js
  *
- * DataExtract AI fixed-schema financial CSV validator.
+ * DataExtract AI adaptive financial CSV validator.
  *
- * Used for:
- * - pdf_csv
- * - pdf_excel
- * - pdf_sheets
+ * Supports document-aware financial schemas:
  *
- * NOT used for:
- * - pdf_json
- * - ocr_pdf
- * - ai_table
- * - clean_data
+ * - bank_statement
+ * - invoice
+ * - medical_bill
+ * - receipt
+ * - generic_financial
  *
- * Responsibilities:
- * - Enforce the fixed 21-column financial schema.
- * - Remove duplicate header rows.
- * - Detect short/long rows.
- * - Pad short rows when configured.
- * - Preserve valid quoted commas, quotes, and line breaks.
- * - Re-serialize cleaned output as valid CSV.
- * - Validate structured monetary fields without inventing values.
+ * Also provides:
+ *
+ * - standards-compliant CSV parsing
+ * - CSV serialization
+ * - monetary validation
+ * - monetary normalization
+ * - short-row detection
+ * - long-row detection
+ * - duplicate-header removal
+ * - Markdown fence cleanup
  */
 
 
 /* ============================================================
-   FIXED FINANCIAL SCHEMA
+   ADAPTIVE FINANCIAL SCHEMAS
 ============================================================ */
 
-const EXPECTED_COLUMNS = 21;
+const FINANCIAL_SCHEMAS = {
+  /* ==========================================================
+     BANK STATEMENT
+  ========================================================== */
+
+  bank_statement: {
+    documentType: "bank_statement",
+
+    header: [
+      "Bank/Institution Name",
+      "Account ID",
+      "Statement Period",
+      "Beginning Balance",
+      "Ending Balance",
+      "Transaction Date",
+      "Description",
+      "Debit",
+      "Credit",
+      "Transaction Amount",
+      "Running Balance",
+      "Total Deposits",
+      "Total Withdrawals",
+      "Currency",
+    ],
+
+    monetaryColumns: [
+      "Beginning Balance",
+      "Ending Balance",
+      "Debit",
+      "Credit",
+      "Transaction Amount",
+      "Running Balance",
+      "Total Deposits",
+      "Total Withdrawals",
+    ],
+  },
+
+
+  /* ==========================================================
+     INVOICE
+  ========================================================== */
+
+  invoice: {
+    documentType: "invoice",
+
+    header: [
+      "Vendor/Issuer Name",
+      "Invoice Number",
+      "Invoice Date",
+      "Due Date",
+      "Line Item Description",
+      "Quantity",
+      "Unit Price",
+      "Discount",
+      "Tax",
+      "Line Total",
+      "Subtotal",
+      "Total Amount",
+      "Amount Paid",
+      "Amount Due",
+      "Currency",
+      "Issuer Contact Phone",
+      "Issuer Mailing Address",
+    ],
+
+    monetaryColumns: [
+      "Unit Price",
+      "Discount",
+      "Tax",
+      "Line Total",
+      "Subtotal",
+      "Total Amount",
+      "Amount Paid",
+      "Amount Due",
+    ],
+  },
+
+
+  /* ==========================================================
+     MEDICAL BILL / EOB
+  ========================================================== */
+
+  medical_bill: {
+    documentType: "medical_bill",
+
+    header: [
+      "Provider Name",
+      "Account/Claim ID",
+      "Service Date",
+      "Line Item Description",
+      "CPT/HCPCS Code",
+      "Quantity",
+      "Gross Charge",
+      "Adjustment/Discount",
+      "Insurance Payment",
+      "Patient Responsibility",
+      "Line Balance",
+      "Total Charges",
+      "Total Adjustments",
+      "Total Insurance Payments",
+      "Total Patient Responsibility",
+      "Amount Due",
+      "Currency",
+      "Provider Contact Phone",
+      "Provider Mailing Address",
+    ],
+
+    monetaryColumns: [
+      "Gross Charge",
+      "Adjustment/Discount",
+      "Insurance Payment",
+      "Patient Responsibility",
+      "Line Balance",
+      "Total Charges",
+      "Total Adjustments",
+      "Total Insurance Payments",
+      "Total Patient Responsibility",
+      "Amount Due",
+    ],
+  },
+
+
+  /* ==========================================================
+     RECEIPT
+  ========================================================== */
+
+  receipt: {
+    documentType: "receipt",
+
+    header: [
+      "Merchant Name",
+      "Transaction Date",
+      "Receipt/Transaction ID",
+      "Item Description",
+      "Quantity",
+      "Unit Price",
+      "Discount",
+      "Tax",
+      "Line Total",
+      "Subtotal",
+      "Total Amount",
+      "Payment Method",
+      "Currency",
+      "Merchant Contact Phone",
+      "Merchant Address",
+    ],
+
+    monetaryColumns: [
+      "Unit Price",
+      "Discount",
+      "Tax",
+      "Line Total",
+      "Subtotal",
+      "Total Amount",
+    ],
+  },
+
+
+  /* ==========================================================
+     GENERIC FINANCIAL
+  ========================================================== */
+
+  generic_financial: {
+    documentType: "generic_financial",
+
+    header: [
+      "Issuer Name",
+      "Document ID",
+      "Document Date",
+      "Line Item Description",
+      "Amount",
+      "Subtotal",
+      "Total Amount",
+      "Amount Paid",
+      "Amount Due",
+      "Balance",
+      "Currency",
+      "Issuer Contact Phone",
+      "Issuer Mailing Address",
+    ],
+
+    monetaryColumns: [
+      "Amount",
+      "Subtotal",
+      "Total Amount",
+      "Amount Paid",
+      "Amount Due",
+      "Balance",
+    ],
+  },
+};
+
+
+/* ============================================================
+   LEGACY HEADER
+
+   Temporary compatibility export.
+
+   routes/extraction.js currently imports HEADER.
+
+   File 3 will remove that dependency and use the adaptive
+   schema returned by getFinancialSchema().
+============================================================ */
 
 const HEADER = [
   "Document Type",
@@ -55,10 +256,8 @@ const HEADER = [
   "Issuer Mailing Address",
 ];
 
-
-/* ============================================================
-   MONETARY FIELD CONFIGURATION
-============================================================ */
+const EXPECTED_COLUMNS =
+  HEADER.length;
 
 const MONETARY_COLUMNS = [
   "Gross Amount",
@@ -74,11 +273,85 @@ const MONETARY_COLUMNS = [
   "Patient Responsibility",
 ];
 
-const MONETARY_COLUMN_INDEXES =
-  MONETARY_COLUMNS.map(
-    (columnName) =>
-      HEADER.indexOf(columnName)
+
+/* ============================================================
+   SUPPORTED FINANCIAL DOCUMENT TYPES
+============================================================ */
+
+const SUPPORTED_FINANCIAL_DOCUMENT_TYPES =
+  new Set(
+    Object.keys(
+      FINANCIAL_SCHEMAS
+    )
   );
+
+
+/* ============================================================
+   NORMALIZE DOCUMENT TYPE
+============================================================ */
+
+function normalizeDocumentType(
+  documentType
+) {
+  if (
+    documentType == null
+  ) {
+    return "generic_financial";
+  }
+
+  const normalized =
+    String(documentType)
+      .trim()
+      .toLowerCase()
+      .replace(
+        /[\s-]+/g,
+        "_"
+      );
+
+  if (
+    SUPPORTED_FINANCIAL_DOCUMENT_TYPES
+      .has(normalized)
+  ) {
+    return normalized;
+  }
+
+  return "generic_financial";
+}
+
+
+/* ============================================================
+   GET FINANCIAL SCHEMA
+============================================================ */
+
+function getFinancialSchema(
+  documentType
+) {
+  const normalizedType =
+    normalizeDocumentType(
+      documentType
+    );
+
+  const schema =
+    FINANCIAL_SCHEMAS[
+      normalizedType
+    ] ||
+    FINANCIAL_SCHEMAS
+      .generic_financial;
+
+  return {
+    documentType:
+      schema.documentType,
+
+    header:
+      [...schema.header],
+
+    monetaryColumns:
+      [...schema.monetaryColumns],
+
+    expectedColumns:
+      schema.header.length,
+  };
+}
 
 
 /* ============================================================
@@ -89,6 +362,7 @@ const MONETARY_COLUMN_INDEXES =
  * Parse an entire CSV string.
  *
  * Supports:
+ *
  * - quoted fields
  * - commas inside quoted fields
  * - escaped double quotes
@@ -96,12 +370,15 @@ const MONETARY_COLUMN_INDEXES =
  * - line breaks inside quoted fields
  *
  * @param {string} csvText
+ *
  * @returns {{
  *   rows: string[][],
  *   unterminatedQuote: boolean
  * }}
  */
-function parseCsvRows(csvText) {
+function parseCsvRows(
+  csvText
+) {
   const rows = [];
 
   let row = [];
@@ -118,7 +395,9 @@ function parseCsvRows(csvText) {
     i < text.length;
     i++
   ) {
-    const char = text[i];
+    const char =
+      text[i];
+
     const nextChar =
       text[i + 1];
 
@@ -128,24 +407,30 @@ function parseCsvRows(csvText) {
     ======================================================== */
 
     if (inQuotes) {
-
       if (
         char === '"' &&
         nextChar === '"'
       ) {
         field += '"';
+
         i++;
+
         continue;
       }
 
 
-      if (char === '"') {
-        inQuotes = false;
+      if (
+        char === '"'
+      ) {
+        inQuotes =
+          false;
+
         continue;
       }
 
 
       field += char;
+
       continue;
     }
 
@@ -154,15 +439,25 @@ function parseCsvRows(csvText) {
        OUTSIDE QUOTED FIELD
     ======================================================== */
 
-    if (char === '"') {
-      inQuotes = true;
+    if (
+      char === '"'
+    ) {
+      inQuotes =
+        true;
+
       continue;
     }
 
 
-    if (char === ",") {
-      row.push(field);
+    if (
+      char === ","
+    ) {
+      row.push(
+        field
+      );
+
       field = "";
+
       continue;
     }
 
@@ -171,9 +466,8 @@ function parseCsvRows(csvText) {
       char === "\n" ||
       char === "\r"
     ) {
-
       /*
-       * Handle Windows CRLF as one newline.
+       * Treat Windows CRLF as one newline.
        */
       if (
         char === "\r" &&
@@ -182,21 +476,35 @@ function parseCsvRows(csvText) {
         i++;
       }
 
-      row.push(field);
+
+      row.push(
+        field
+      );
+
 
       const hasContent =
         row.some(
           (value) =>
-            String(value)
+            String(
+              value
+            )
               .trim()
-              .length > 0
+              .length >
+            0
         );
 
-      if (hasContent) {
-        rows.push(row);
+
+      if (
+        hasContent
+      ) {
+        rows.push(
+          row
+        );
       }
 
+
       row = [];
+
       field = "";
 
       continue;
@@ -211,40 +519,52 @@ function parseCsvRows(csvText) {
      FINAL FIELD / ROW
   ============================================================ */
 
-  row.push(field);
+  row.push(
+    field
+  );
+
 
   const hasFinalContent =
     row.some(
       (value) =>
-        String(value)
+        String(
+          value
+        )
           .trim()
-          .length > 0
+          .length >
+        0
     );
 
-  if (hasFinalContent) {
-    rows.push(row);
+
+  if (
+    hasFinalContent
+  ) {
+    rows.push(
+      row
+    );
   }
 
 
   return {
     rows,
+
     unterminatedQuote:
       inQuotes,
   };
 }
 
 
-/**
- * Parse a single CSV row.
- *
- * Kept for compatibility with existing imports.
- *
- * @param {string} line
- * @returns {string[]}
- */
-function parseCsvLine(line) {
+/* ============================================================
+   PARSE SINGLE CSV ROW
+============================================================ */
+
+function parseCsvLine(
+  line
+) {
   const parsed =
-    parseCsvRows(line);
+    parseCsvRows(
+      line
+    );
 
   return (
     parsed.rows[0] ||
@@ -261,42 +581,47 @@ function parseCsvLine(line) {
  * Serialize one row as standards-compliant CSV.
  *
  * Fields containing:
+ *
  * - comma
  * - quote
  * - CR
  * - LF
  *
  * are wrapped in double quotes.
- *
- * @param {Array} fields
- * @returns {string}
  */
-function toCsvLine(fields) {
+function toCsvLine(
+  fields
+) {
   return fields
-    .map((field) => {
+    .map(
+      (field) => {
 
-      const value =
-        field == null
-          ? ""
-          : String(field);
+        const value =
+          field == null
+            ? ""
+            : String(
+                field
+              );
 
 
-      if (
-        /[",\r\n]/.test(value)
-      ) {
-        return (
-          '"' +
-          value.replace(
-            /"/g,
-            '""'
-          ) +
-          '"'
-        );
+        if (
+          /[",\r\n]/
+            .test(value)
+        ) {
+          return (
+            '"' +
+            value.replace(
+              /"/g,
+              '""'
+            ) +
+            '"'
+          );
+        }
+
+
+        return value;
       }
-
-
-      return value;
-    })
+    )
     .join(",");
 }
 
@@ -305,32 +630,62 @@ function toCsvLine(fields) {
    NORMALIZATION HELPERS
 ============================================================ */
 
-function normalizeFields(fields) {
+function normalizeFields(
+  fields
+) {
   return fields.map(
     (field) =>
-      String(field ?? "")
+      String(
+        field ?? ""
+      )
         .trim()
         .toLowerCase()
   );
 }
 
 
-function isHeaderRow(fields) {
+/* ============================================================
+   HEADER CHECK
+============================================================ */
+
+function isHeaderRow(
+  fields,
+  expectedHeader
+) {
   if (
-    fields.length !==
-    EXPECTED_COLUMNS
+    !Array.isArray(
+      expectedHeader
+    )
   ) {
     return false;
   }
 
+
+  if (
+    fields.length !==
+    expectedHeader.length
+  ) {
+    return false;
+  }
+
+
   const normalized =
-    normalizeFields(fields);
+    normalizeFields(
+      fields
+    );
+
 
   const expected =
-    normalizeFields(HEADER);
+    normalizeFields(
+      expectedHeader
+    );
+
 
   return normalized.every(
-    (field, index) =>
+    (
+      field,
+      index
+    ) =>
       field ===
       expected[index]
   );
@@ -341,31 +696,33 @@ function isHeaderRow(fields) {
    MARKDOWN CLEANUP
 ============================================================ */
 
-/**
- * Models occasionally return Markdown fences despite instructions.
- *
- * Only remove fence-only lines.
- * Do not remove legitimate backticks inside fields.
- */
-function removeMarkdownFences(text) {
-  return String(text)
-    .split(/\r?\n/)
+function removeMarkdownFences(
+  text
+) {
+  return String(
+    text ?? ""
+  )
+    .split(
+      /\r?\n/
+    )
     .filter(
       (line) =>
         !line
           .trim()
-          .startsWith("```")
+          .startsWith(
+            "```"
+          )
     )
     .join("\n");
 }
 
 
 /* ============================================================
-   MONETARY VALIDATION HELPERS
+   MONETARY VALIDATION
 ============================================================ */
 
 /**
- * Acceptable monetary examples:
+ * Valid:
  *
  * 858.44
  * -236.00
@@ -373,128 +730,276 @@ function removeMarkdownFences(text) {
  * 593
  * -4.56
  *
- * Reject examples:
+ * Invalid:
  *
  * $858.44
  * USD 858.44
  * 858.44 dollars
  *
- * Empty values are allowed.
+ * Empty values are valid.
  */
-function isValidMonetaryValue(value) {
+function isValidMonetaryValue(
+  value
+) {
   const normalized =
-    String(value ?? "")
+    String(
+      value ?? ""
+    )
       .trim();
 
-  if (normalized === "") {
+
+  if (
+    normalized === ""
+  ) {
     return true;
   }
 
-  return /^-?\d+(?:\.\d{1,2})?$/.test(
-    normalized
-  );
+
+  return /^-?\d+(?:\.\d{1,2})?$/
+    .test(
+      normalized
+    );
 }
 
 
-/**
- * Normalize valid monetary values to exactly two decimals.
- *
- * Empty values remain empty.
- * Invalid values are preserved so they can be flagged instead
- * of silently changed.
- */
-function normalizeMonetaryValue(value) {
+/* ============================================================
+   NORMALIZE MONETARY VALUE
+============================================================ */
+
+function normalizeMonetaryValue(
+  value
+) {
   const normalized =
-    String(value ?? "")
+    String(
+      value ?? ""
+    )
       .trim();
 
-  if (normalized === "") {
+
+  if (
+    normalized === ""
+  ) {
     return "";
   }
 
+
   if (
-    !isValidMonetaryValue(normalized)
+    !isValidMonetaryValue(
+      normalized
+    )
   ) {
     return normalized;
   }
+
 
   const numericValue =
-    Number(normalized);
+    Number(
+      normalized
+    );
+
 
   if (
-    !Number.isFinite(numericValue)
+    !Number.isFinite(
+      numericValue
+    )
   ) {
     return normalized;
   }
 
-  return numericValue.toFixed(2);
+
+  return numericValue
+    .toFixed(2);
 }
 
 
-/**
- * Validate and normalize monetary fields in one row.
- *
- * @param {string[]} fields
- * @param {number} lineNumber
- * @param {string[]} errors
- * @returns {string[]}
- */
+/* ============================================================
+   GET MONETARY COLUMN INDEXES
+============================================================ */
+
+function getMonetaryColumnIndexes(
+  header,
+  monetaryColumns
+) {
+  if (
+    !Array.isArray(header) ||
+    !Array.isArray(
+      monetaryColumns
+    )
+  ) {
+    return [];
+  }
+
+
+  return monetaryColumns
+    .map(
+      (columnName) =>
+        header.indexOf(
+          columnName
+        )
+    )
+    .filter(
+      (index) =>
+        index >= 0
+    );
+}
+
+
+/* ============================================================
+   VALIDATE MONETARY FIELDS
+============================================================ */
+
 function validateMonetaryFields(
   fields,
   lineNumber,
-  errors
+  errors,
+  header,
+  monetaryColumns
 ) {
   const normalizedFields =
     [...fields];
 
-  MONETARY_COLUMN_INDEXES.forEach(
-    (columnIndex) => {
 
-      if (columnIndex < 0) {
-        return;
+  const monetaryIndexes =
+    getMonetaryColumnIndexes(
+      header,
+      monetaryColumns
+    );
+
+
+  monetaryIndexes
+    .forEach(
+      (columnIndex) => {
+
+        const value =
+          normalizedFields[
+            columnIndex
+          ];
+
+
+        const columnName =
+          header[
+            columnIndex
+          ];
+
+
+        if (
+          !isValidMonetaryValue(
+            value
+          )
+        ) {
+          errors.push(
+            `Row ${lineNumber}: invalid monetary value "${value}" ` +
+            `in "${columnName}". Expected numeric value without currency symbols.`
+          );
+
+          return;
+        }
+
+
+        normalizedFields[
+          columnIndex
+        ] =
+          normalizeMonetaryValue(
+            value
+          );
       }
+    );
 
-      const value =
-        normalizedFields[columnIndex];
-
-      const columnName =
-        HEADER[columnIndex];
-
-
-      if (
-        !isValidMonetaryValue(value)
-      ) {
-        errors.push(
-          `Row ${lineNumber}: invalid monetary value "${value}" ` +
-          `in "${columnName}". Expected numeric value without currency symbols.`
-        );
-
-        return;
-      }
-
-
-      normalizedFields[columnIndex] =
-        normalizeMonetaryValue(value);
-    }
-  );
 
   return normalizedFields;
 }
 
 
 /* ============================================================
-   MAIN VALIDATOR
+   BUILD CSV FROM JSON ROWS
+============================================================ */
+
+/**
+ * Convert structured JSON rows to CSV according
+ * to the selected document schema.
+ *
+ * @param {object[]} rows
+ * @param {string} documentType
+ *
+ * @returns {string}
+ */
+function structuredRowsToCsv(
+  rows,
+  documentType
+) {
+  const schema =
+    getFinancialSchema(
+      documentType
+    );
+
+
+  const safeRows =
+    Array.isArray(rows)
+      ? rows
+      : [];
+
+
+  const csvRows =
+    safeRows.map(
+      (item) => {
+
+        const fields =
+          schema.header.map(
+            (column) => {
+
+              const value =
+                item?.[
+                  column
+                ];
+
+
+              return value == null
+                ? ""
+                : String(
+                    value
+                  );
+            }
+          );
+
+
+        return toCsvLine(
+          fields
+        );
+      }
+    );
+
+
+  return [
+    toCsvLine(
+      schema.header
+    ),
+
+    ...csvRows,
+  ].join("\n");
+}
+
+
+/* ============================================================
+   MAIN ADAPTIVE CSV VALIDATOR
 ============================================================ */
 
 /**
  * Validate and normalize financial CSV.
  *
  * @param {string} rawCsv
- * @param {object} [options]
- * @param {boolean} [options.padShortRows=true]
+ *
+ * @param {object} options
+ *
+ * @param {string} options.documentType
+ *
+ * @param {boolean}
+ * options.padShortRows=true
  *
  * @returns {{
  *   valid: boolean,
+ *   documentType: string,
+ *   header: string[],
+ *   expectedColumns: number,
  *   rows: string[][],
  *   cleanedCsv: string,
  *   errors: string[],
@@ -509,14 +1014,37 @@ function validateCsv(
   rawCsv,
   options = {}
 ) {
-
   const {
-    padShortRows = true,
+    documentType =
+      "generic_financial",
+
+    padShortRows =
+      true,
   } = options;
 
 
+  const schema =
+    getFinancialSchema(
+      documentType
+    );
+
+
+  const header =
+    schema.header;
+
+
+  const monetaryColumns =
+    schema.monetaryColumns;
+
+
+  const expectedColumns =
+    schema.expectedColumns;
+
+
   const errors = [];
+
   const flaggedRows = [];
+
   const rows = [];
 
 
@@ -526,24 +1054,42 @@ function validateCsv(
 
   if (
     rawCsv == null ||
-    String(rawCsv)
+    String(
+      rawCsv
+    )
       .trim()
-      .length === 0
+      .length ===
+    0
   ) {
     return {
-      valid: false,
-      rows: [],
-      cleanedCsv: "",
+      valid:
+        false,
+
+      documentType:
+        schema.documentType,
+
+      header,
+
+      expectedColumns,
+
+      rows:
+        [],
+
+      cleanedCsv:
+        "",
+
       errors: [
         "No content returned from extraction.",
       ],
-      flaggedRows: [],
+
+      flaggedRows:
+        [],
     };
   }
 
 
   /* ============================================================
-     CLEAN MODEL OUTPUT
+     CLEAN INPUT
   ============================================================ */
 
   const cleanedInput =
@@ -562,7 +1108,9 @@ function validateCsv(
     );
 
 
-  if (parsed.unterminatedQuote) {
+  if (
+    parsed.unterminatedQuote
+  ) {
     errors.push(
       "CSV contains an unterminated quoted field."
     );
@@ -570,16 +1118,32 @@ function validateCsv(
 
 
   if (
-    parsed.rows.length === 0
+    parsed.rows.length ===
+    0
   ) {
     return {
-      valid: false,
-      rows: [],
-      cleanedCsv: "",
+      valid:
+        false,
+
+      documentType:
+        schema.documentType,
+
+      header,
+
+      expectedColumns,
+
+      rows:
+        [],
+
+      cleanedCsv:
+        "",
+
       errors: [
         "No CSV rows could be parsed from extraction output.",
       ],
-      flaggedRows: [],
+
+      flaggedRows:
+        [],
     };
   }
 
@@ -598,16 +1162,12 @@ function validateCsv(
         index + 1;
 
 
-      /*
-       * Remove stray Markdown emphasis around entire values.
-       *
-       * We avoid aggressive formatting removal that could alter
-       * legitimate content.
-       */
       const fields =
         originalFields.map(
           (field) =>
-            String(field)
+            String(
+              field
+            )
               .replace(
                 /^\*\*(.*)\*\*$/,
                 "$1"
@@ -624,11 +1184,13 @@ function validateCsv(
       ======================================================== */
 
       if (
-        isHeaderRow(fields)
+        isHeaderRow(
+          fields,
+          header
+        )
       ) {
         /*
-         * Header is always regenerated from HEADER below.
-         * Therefore every detected header row is skipped here.
+         * Header is regenerated below.
          */
         return;
       }
@@ -640,19 +1202,22 @@ function validateCsv(
 
       if (
         fields.length ===
-        EXPECTED_COLUMNS
+        expectedColumns
       ) {
-
         const normalizedFields =
           validateMonetaryFields(
             fields,
             lineNumber,
-            errors
+            errors,
+            header,
+            monetaryColumns
           );
+
 
         rows.push(
           normalizedFields
         );
+
 
         return;
       }
@@ -679,24 +1244,24 @@ function validateCsv(
 
       if (
         fields.length <
-        EXPECTED_COLUMNS
+        expectedColumns
       ) {
-
         errors.push(
-          `Row ${lineNumber}: expected ${EXPECTED_COLUMNS} fields, ` +
+          `Row ${lineNumber}: expected ${expectedColumns} fields, ` +
           `got ${fields.length}. Possible dropped blank field / column drift.`
         );
 
 
-        if (padShortRows) {
-
+        if (
+          padShortRows
+        ) {
           const padded =
             [...fields];
 
 
           while (
             padded.length <
-            EXPECTED_COLUMNS
+            expectedColumns
           ) {
             padded.push("");
           }
@@ -706,8 +1271,11 @@ function validateCsv(
             validateMonetaryFields(
               padded,
               lineNumber,
-              errors
+              errors,
+              header,
+              monetaryColumns
             );
+
 
           rows.push(
             normalizedFields
@@ -724,15 +1292,14 @@ function validateCsv(
       ======================================================== */
 
       errors.push(
-        `Row ${lineNumber}: expected ${EXPECTED_COLUMNS} fields, ` +
+        `Row ${lineNumber}: expected ${expectedColumns} fields, ` +
         `got ${fields.length}. Possible malformed or unescaped field.`
       );
 
       /*
-       * Do NOT attempt to guess how extra fields should be merged.
-       *
-       * A guessed merge could silently move financial values into
-       * incorrect columns.
+       * Do not guess how extra fields should be merged.
+       * Incorrect merging could silently move financial values
+       * into the wrong columns.
        */
     }
   );
@@ -744,10 +1311,13 @@ function validateCsv(
 
   const cleanedCsv =
     [
-      HEADER,
+      header,
+
       ...rows,
     ]
-      .map(toCsvLine)
+      .map(
+        toCsvLine
+      )
       .join("\n");
 
 
@@ -757,7 +1327,15 @@ function validateCsv(
 
   return {
     valid:
-      errors.length === 0,
+      errors.length ===
+      0,
+
+    documentType:
+      schema.documentType,
+
+    header,
+
+    expectedColumns,
 
     rows,
 
@@ -775,13 +1353,27 @@ function validateCsv(
 ============================================================ */
 
 module.exports = {
+  /* Adaptive schema API */
+  FINANCIAL_SCHEMAS,
+  SUPPORTED_FINANCIAL_DOCUMENT_TYPES,
+  normalizeDocumentType,
+  getFinancialSchema,
+  structuredRowsToCsv,
+
+  /* CSV utilities */
   validateCsv,
   parseCsvLine,
   parseCsvRows,
   toCsvLine,
+
+  /* Monetary utilities */
+  isValidMonetaryValue,
+  normalizeMonetaryValue,
+  getMonetaryColumnIndexes,
+  validateMonetaryFields,
+
+  /* Temporary legacy exports */
   EXPECTED_COLUMNS,
   HEADER,
   MONETARY_COLUMNS,
-  isValidMonetaryValue,
-  normalizeMonetaryValue,
 };
