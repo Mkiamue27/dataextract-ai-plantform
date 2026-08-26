@@ -15,8 +15,9 @@ const checkUsageLimit =
 
 const {
   validateCsv,
-  toCsvLine,
-  HEADER,
+  structuredRowsToCsv,
+  normalizeDocumentType,
+  getFinancialSchema,
 } = require("../utils/validateCsvOutput");
 
 const {
@@ -25,6 +26,7 @@ const {
   SUPPORTED_PROCESSING_MODES,
   DEFAULT_PROCESSING_MODE,
 } = require("../config/constants");
+
 
 const router = express.Router();
 
@@ -54,18 +56,25 @@ const upload = multer({
 
 
 /* ============================================================
-   CSV OUTPUT MODES
+   ADAPTIVE FINANCIAL OUTPUT MODES
 
-   ai_table is intentionally NOT included here because
-   validateCsvOutput.js expects the fixed 21-column financial
-   schema. AI table detection may return arbitrary columns.
+   These modes use:
+
+   OpenAI JSON
+        ↓
+   documentType
+        ↓
+   adaptive financial schema
+        ↓
+   CSV
 ============================================================ */
 
-const CSV_OUTPUT_MODES = new Set([
-  "pdf_csv",
-  "pdf_excel",
-  "pdf_sheets",
-]);
+const FINANCIAL_OUTPUT_MODES =
+  new Set([
+    "pdf_csv",
+    "pdf_excel",
+    "pdf_sheets",
+  ]);
 
 
 /* ============================================================
@@ -128,17 +137,65 @@ function buildOutputFileName(
 
 
 /* ============================================================
-   FINANCIAL JSON -> CSV
+   CLEAN JSON RESPONSE
+
+   Models should return raw JSON, but this safely removes
+   accidental Markdown fences without changing JSON content.
 ============================================================ */
 
-function financialJsonToCsv(
+function cleanJsonResponse(
   rawContent
 ) {
+  let content =
+    String(
+      rawContent || ""
+    ).trim();
+
+
+  if (
+    content.startsWith("```")
+  ) {
+    content =
+      content.replace(
+        /^```(?:json)?\s*/i,
+        ""
+      );
+
+    content =
+      content.replace(
+        /\s*```$/,
+        ""
+      );
+  }
+
+
+  return content.trim();
+}
+
+
+/* ============================================================
+   PARSE ADAPTIVE FINANCIAL JSON
+============================================================ */
+
+function parseFinancialExtraction(
+  rawContent
+) {
+  const cleaned =
+    cleanJsonResponse(
+      rawContent
+    );
+
+
   let parsed;
 
+
   try {
+
     parsed =
-      JSON.parse(rawContent);
+      JSON.parse(
+        cleaned
+      );
+
   } catch (error) {
 
     console.error(
@@ -147,8 +204,21 @@ function financialJsonToCsv(
 
     console.error(
       "OpenAI response length:",
-      String(rawContent || "").length
+      String(
+        rawContent || ""
+      ).length
     );
+
+    console.error(
+      "OpenAI response preview:",
+      String(
+        rawContent || ""
+      ).slice(
+        0,
+        500
+      )
+    );
+
 
     throw new Error(
       "Financial extraction returned invalid JSON."
@@ -158,25 +228,78 @@ function financialJsonToCsv(
 
   if (
     !parsed ||
-    !Array.isArray(parsed.rows)
+    typeof parsed !== "object" ||
+    Array.isArray(parsed)
   ) {
+
+    throw new Error(
+      "Financial extraction must return a JSON object."
+    );
+  }
+
+
+  /* ============================================================
+     DOCUMENT TYPE
+  ============================================================ */
+
+  const documentType =
+    normalizeDocumentType(
+      parsed.documentType
+    );
+
+
+  /* ============================================================
+     ROWS
+  ============================================================ */
+
+  if (
+    !Array.isArray(
+      parsed.rows
+    )
+  ) {
+
     console.error(
       "Financial extraction JSON did not contain a rows array."
     );
 
     console.error(
       "Top-level JSON keys:",
-      parsed &&
-      typeof parsed === "object"
-        ? Object.keys(parsed)
-        : []
+      Object.keys(
+        parsed
+      )
     );
+
 
     throw new Error(
       "Financial extraction JSON is missing a rows array."
     );
   }
 
+
+  /* ============================================================
+     SCHEMA
+  ============================================================ */
+
+  const schema =
+    getFinancialSchema(
+      documentType
+    );
+
+
+  console.log(
+    "Detected document type:",
+    documentType
+  );
+
+  console.log(
+    "Adaptive schema columns:",
+    schema.header.length
+  );
+
+  console.log(
+    "Adaptive schema header:",
+    schema.header
+  );
 
   console.log(
     "Financial JSON rows received:",
@@ -187,63 +310,68 @@ function financialJsonToCsv(
   if (
     parsed.rows.length > 0 &&
     parsed.rows[0] &&
-    typeof parsed.rows[0] === "object"
+    typeof parsed.rows[0] ===
+      "object"
   ) {
-    console.log(
-      "First financial row keys:",
-      Object.keys(parsed.rows[0])
-    );
 
     console.log(
-      "Expected CSV header count:",
-      HEADER.length
+      "First financial row keys:",
+      Object.keys(
+        parsed.rows[0]
+      )
     );
   }
 
 
-  const csvRows =
-    parsed.rows.map(
-      (item) => {
+  return {
+    documentType,
+    rows:
+      parsed.rows,
+    schema,
+  };
+}
 
-        const fields =
-          HEADER.map(
-            (column) => {
 
-              const value =
-                item?.[column];
+/* ============================================================
+   ADAPTIVE FINANCIAL JSON -> CSV
+============================================================ */
 
-              return value == null
-                ? ""
-                : String(value);
-            }
-          );
-
-        return toCsvLine(
-          fields
-        );
-      }
+function financialJsonToCsv(
+  rawContent
+) {
+  const extraction =
+    parseFinancialExtraction(
+      rawContent
     );
 
 
   const csv =
-    [
-      toCsvLine(HEADER),
-      ...csvRows,
-    ].join("\n");
+    structuredRowsToCsv(
+      extraction.rows,
+      extraction.documentType
+    );
 
 
   console.log(
-    "Generated CSV length:",
+    "Generated adaptive CSV length:",
     csv.length
   );
 
   console.log(
-    "Generated CSV data rows:",
-    csvRows.length
+    "Generated adaptive CSV data rows:",
+    extraction.rows.length
   );
 
 
-  return csv;
+  return {
+    documentType:
+      extraction.documentType,
+
+    schema:
+      extraction.schema,
+
+    csv,
+  };
 }
 
 
@@ -266,7 +394,10 @@ async function recordSuccessfulUsage(
   const currentMonth =
     new Date()
       .toISOString()
-      .slice(0, 7);
+      .slice(
+        0,
+        7
+      );
 
 
   const {
@@ -298,6 +429,7 @@ async function recordSuccessfulUsage(
     existingUsage.month ===
       currentMonth
   ) {
+
     conversions =
       Number(
         existingUsage.conversions ||
@@ -349,13 +481,16 @@ async function recordConversionHistory({
   const {
     error,
   } = await supabase
-    .from("conversion_history")
+    .from(
+      "conversion_history"
+    )
     .insert({
       firebase_uid:
         firebaseUid,
 
       timestamp:
-        new Date().toISOString(),
+        new Date()
+          .toISOString(),
 
       input_file_name:
         inputFileName,
@@ -386,10 +521,13 @@ router.post(
 
   /* ============================================================
      DEBUG CHECKPOINT 1
-     Confirms FlutterFlow reached this Render route.
   ============================================================ */
 
-  (req, res, next) => {
+  (
+    req,
+    res,
+    next
+  ) => {
 
     console.log(
       "========================================"
@@ -401,7 +539,8 @@ router.post(
 
     console.log(
       "Time:",
-      new Date().toISOString()
+      new Date()
+        .toISOString()
     );
 
     console.log(
@@ -416,9 +555,12 @@ router.post(
 
     console.log(
       "Content-Type:",
-      req.headers["content-type"] ||
+      req.headers[
+        "content-type"
+      ] ||
       "unknown"
     );
+
 
     next();
   },
@@ -436,10 +578,13 @@ router.post(
 
   /* ============================================================
      DEBUG CHECKPOINT 2
-     Confirms Multer successfully parsed the multipart request.
   ============================================================ */
 
-  (req, res, next) => {
+  (
+    req,
+    res,
+    next
+  ) => {
 
     console.log(
       "=== MULTER FINISHED ==="
@@ -447,7 +592,9 @@ router.post(
 
     console.log(
       "Files after multer:",
-      Array.isArray(req.files)
+      Array.isArray(
+        req.files
+      )
         ? req.files.length
         : 0
     );
@@ -461,8 +608,11 @@ router.post(
 
 
     if (
-      Array.isArray(req.files)
+      Array.isArray(
+        req.files
+      )
     ) {
+
       console.log(
         "Parsed filenames:",
         req.files.map(
@@ -479,10 +629,13 @@ router.post(
 
   /* ============================================================
      DEBUG CHECKPOINT 3
-     Shows request immediately before usage-limit middleware.
   ============================================================ */
 
-  (req, res, next) => {
+  (
+    req,
+    res,
+    next
+  ) => {
 
     console.log(
       "=== ABOUT TO CHECK USAGE LIMIT ==="
@@ -491,16 +644,19 @@ router.post(
     console.log(
       "firebase_uid present:",
       Boolean(
-        req.body?.firebase_uid
+        req.body
+          ?.firebase_uid
       )
     );
 
     console.log(
       "processingMode present:",
       Boolean(
-        req.body?.processingMode
+        req.body
+          ?.processingMode
       )
     );
+
 
     next();
   },
@@ -515,10 +671,13 @@ router.post(
 
   /* ============================================================
      DEBUG CHECKPOINT 4
-     If this appears, checkUsageLimit allowed the request through.
   ============================================================ */
 
-  (req, res, next) => {
+  (
+    req,
+    res,
+    next
+  ) => {
 
     console.log(
       "=== USAGE LIMIT PASSED ==="
@@ -532,7 +691,10 @@ router.post(
      EXTRACTION HANDLER
   ============================================================ */
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
@@ -542,20 +704,24 @@ router.post(
 
       console.log(
         "Processing mode received:",
-        req.body?.processingMode ||
+        req.body
+          ?.processingMode ||
         "(not supplied)"
       );
 
       console.log(
         "Firebase UID supplied:",
         Boolean(
-          req.body?.firebase_uid
+          req.body
+            ?.firebase_uid
         )
       );
 
       console.log(
         "Files received:",
-        Array.isArray(req.files)
+        Array.isArray(
+          req.files
+        )
           ? req.files.length
           : 0
       );
@@ -566,7 +732,9 @@ router.post(
       ======================================================== */
 
       if (
-        !Array.isArray(req.files) ||
+        !Array.isArray(
+          req.files
+        ) ||
         req.files.length === 0
       ) {
 
@@ -574,10 +742,13 @@ router.post(
           "Extraction stopped: no uploaded files were received."
         );
 
+
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
+
             error:
               "No files uploaded.",
           });
@@ -589,7 +760,8 @@ router.post(
       ======================================================== */
 
       const firebaseUid =
-        req.body.firebase_uid;
+        req.body
+          .firebase_uid;
 
 
       if (
@@ -603,10 +775,13 @@ router.post(
           "Extraction stopped: firebase_uid missing."
         );
 
+
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
+
             error:
               "Missing firebase_uid.",
           });
@@ -618,7 +793,8 @@ router.post(
       ======================================================== */
 
       const processingMode =
-        req.body.processingMode ||
+        req.body
+          .processingMode ||
         DEFAULT_PROCESSING_MODE;
 
 
@@ -629,9 +805,10 @@ router.post(
 
 
       if (
-        !SUPPORTED_PROCESSING_MODES.has(
-          processingMode
-        )
+        !SUPPORTED_PROCESSING_MODES
+          .has(
+            processingMode
+          )
       ) {
 
         console.warn(
@@ -639,10 +816,13 @@ router.post(
           processingMode
         );
 
+
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
+
             error:
               `Unsupported processing mode: ${processingMode}`,
           });
@@ -674,11 +854,13 @@ router.post(
       ======================================================== */
 
       const results = [];
+
       const errors = [];
 
 
       for (
-        const file of req.files
+        const file
+        of req.files
       ) {
 
         const inputFileName =
@@ -713,7 +895,8 @@ router.post(
           console.log(
             "Input size:",
             file.size ||
-            file.buffer?.length ||
+            file.buffer
+              ?.length ||
             0
           );
 
@@ -759,7 +942,7 @@ router.post(
 
 
           /* ====================================================
-             MODE-AWARE VALIDATION
+             MODE-AWARE OUTPUT PROCESSING
           ==================================================== */
 
           let finalContent =
@@ -768,32 +951,63 @@ router.post(
           let validation =
             null;
 
+          let documentType =
+            null;
+
+          let schemaHeader =
+            null;
+
 
           if (
-            CSV_OUTPUT_MODES.has(
-              processingMode
-            )
+            FINANCIAL_OUTPUT_MODES
+              .has(
+                processingMode
+              )
           ) {
 
             console.log(
-              "=== CONVERTING FINANCIAL JSON TO CSV ==="
+              "=== PARSING ADAPTIVE FINANCIAL JSON ==="
             );
 
 
-            const generatedCsv =
+            const adaptiveOutput =
               financialJsonToCsv(
                 rawContent
               );
 
 
+            documentType =
+              adaptiveOutput
+                .documentType;
+
+            schemaHeader =
+              adaptiveOutput
+                .schema
+                .header;
+
+
             console.log(
-              "=== VALIDATING GENERATED CSV ==="
+              "Document classified as:",
+              documentType
+            );
+
+            console.log(
+              "Schema column count:",
+              schemaHeader.length
+            );
+
+
+            console.log(
+              "=== VALIDATING ADAPTIVE CSV ==="
             );
 
 
             validation =
               validateCsv(
-                generatedCsv
+                adaptiveOutput.csv,
+                {
+                  documentType,
+                }
               );
 
 
@@ -804,30 +1018,37 @@ router.post(
 
             console.log(
               "CSV validation errors:",
-              validation.errors.length
+              validation
+                .errors
+                .length
             );
 
             console.log(
               "CSV validated rows:",
-              validation.rows.length
+              validation
+                .rows
+                .length
             );
 
             console.log(
               "Cleaned CSV length:",
               String(
-                validation.cleanedCsv ||
+                validation
+                  .cleanedCsv ||
                 ""
               ).length
             );
 
 
             finalContent =
-              validation.cleanedCsv;
+              validation
+                .cleanedCsv;
 
 
             if (
               !validation.valid
             ) {
+
               console.warn(
                 `CSV validation issues for "${inputFileName}":`,
                 validation.errors
@@ -846,6 +1067,12 @@ router.post(
           );
 
           console.log(
+            "Final document type:",
+            documentType ||
+            "not-applicable"
+          );
+
+          console.log(
             "Final content length:",
             String(
               finalContent ||
@@ -856,7 +1083,9 @@ router.post(
 
           if (
             !finalContent ||
-            String(finalContent)
+            String(
+              finalContent
+            )
               .trim()
               .length === 0
           ) {
@@ -864,6 +1093,7 @@ router.post(
             console.error(
               "FINAL CONTENT IS EMPTY."
             );
+
 
             throw new Error(
               "Extraction produced empty final content."
@@ -879,7 +1109,8 @@ router.post(
 
             await recordConversionHistory({
               firebaseUid:
-                firebaseUid.trim(),
+                firebaseUid
+                  .trim(),
 
               inputFileName,
 
@@ -891,7 +1122,9 @@ router.post(
                 "completed",
             });
 
-          } catch (historyError) {
+          } catch (
+            historyError
+          ) {
 
             console.error(
               `Failed to record conversion history for "${inputFileName}":`,
@@ -915,6 +1148,10 @@ router.post(
 
             processingMode,
 
+            documentType,
+
+            schemaHeader,
+
             success:
               true,
 
@@ -928,13 +1165,28 @@ router.post(
               validation
                 ? {
                     valid:
-                      validation.valid,
+                      validation
+                        .valid,
 
                     errors:
-                      validation.errors,
+                      validation
+                        .errors,
 
                     flaggedRows:
-                      validation.flaggedRows,
+                      validation
+                        .flaggedRows,
+
+                    expectedColumns:
+                      validation
+                        .expectedColumns,
+
+                    documentType:
+                      validation
+                        .documentType,
+
+                    header:
+                      validation
+                        .header,
                   }
                 : null,
           });
@@ -945,20 +1197,28 @@ router.post(
           );
 
 
-        } catch (fileError) {
+        } catch (
+          fileError
+        ) {
 
           console.error(
             `Extraction failed for "${inputFileName}":`,
-            fileError?.message ||
+            fileError
+              ?.message ||
             fileError
           );
 
+
+          /* ====================================================
+             RECORD FAILED HISTORY
+          ==================================================== */
 
           try {
 
             await recordConversionHistory({
               firebaseUid:
-                firebaseUid.trim(),
+                firebaseUid
+                  .trim(),
 
               inputFileName,
 
@@ -970,7 +1230,9 @@ router.post(
                 "failed",
             });
 
-          } catch (historyError) {
+          } catch (
+            historyError
+          ) {
 
             console.error(
               `Failed to record failed conversion history for "${inputFileName}":`,
@@ -978,6 +1240,10 @@ router.post(
             );
           }
 
+
+          /* ====================================================
+             FAILED RESULT
+          ==================================================== */
 
           errors.push({
             filename:
@@ -994,7 +1260,8 @@ router.post(
               "failed",
 
             error:
-              fileError.message ||
+              fileError
+                ?.message ||
               "Document extraction failed.",
           });
         }
@@ -1006,7 +1273,8 @@ router.post(
       ======================================================== */
 
       if (
-        results.length === 0
+        results.length ===
+        0
       ) {
 
         console.error(
@@ -1028,7 +1296,8 @@ router.post(
             processingMode,
 
             totalFiles:
-              req.files.length,
+              req.files
+                .length,
 
             successfulFiles:
               0,
@@ -1049,16 +1318,22 @@ router.post(
 
       /* ========================================================
          RECORD SUCCESSFUL USAGE
+
+         Each successfully processed PDF counts as one conversion.
       ======================================================== */
 
       try {
 
         await recordSuccessfulUsage(
-          firebaseUid.trim(),
+          firebaseUid
+            .trim(),
+
           results.length
         );
 
-      } catch (usageError) {
+      } catch (
+        usageError
+      ) {
 
         console.error(
           "Failed to record usage:",
@@ -1077,7 +1352,8 @@ router.post(
 
       console.log(
         "Total files:",
-        req.files.length
+        req.files
+          .length
       );
 
       console.log(
@@ -1091,15 +1367,31 @@ router.post(
       );
 
       console.log(
-        "Response content lengths:",
+        "Response results:",
         results.map(
           (result) => ({
             file:
-              result.outputFileName,
+              result
+                .outputFileName,
 
-            length:
+            documentType:
+              result
+                .documentType,
+
+            columns:
+              Array.isArray(
+                result
+                  .schemaHeader
+              )
+                ? result
+                    .schemaHeader
+                    .length
+                : null,
+
+            contentLength:
               String(
-                result.content ||
+                result
+                  .content ||
                 ""
               ).length,
           })
@@ -1120,7 +1412,8 @@ router.post(
           processingMode,
 
           totalFiles:
-            req.files.length,
+            req.files
+              .length,
 
           successfulFiles:
             results.length,
@@ -1129,7 +1422,8 @@ router.post(
             errors.length,
 
           partialSuccess:
-            errors.length > 0,
+            errors.length >
+            0,
 
           results,
 
@@ -1137,14 +1431,17 @@ router.post(
         });
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
 
       console.error(
         "=== EXTRACTION ROUTE ERROR ==="
       );
 
       console.error(
-        error?.message ||
+        error
+          ?.message ||
         error
       );
 
@@ -1156,7 +1453,8 @@ router.post(
             false,
 
           error:
-            error.message ||
+            error
+              ?.message ||
             "Internal extraction error.",
         });
     }
