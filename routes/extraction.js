@@ -1863,6 +1863,81 @@ router.post(
   }
 );
 
+/* ============================================================
+   GET /extract/conversion-history
+============================================================ */
+
+router.get(
+  "/conversion-history",
+
+  async (req, res) => {
+    try {
+      const firebaseUid =
+        req.query.firebase_uid;
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing firebase_uid.",
+        });
+      }
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("conversion_history")
+        .select(
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status"
+        )
+        .eq(
+          "firebase_uid",
+          String(firebaseUid).trim()
+        )
+        .order(
+          "timestamp",
+          {
+            ascending: false,
+          }
+        )
+        .limit(50);
+
+      if (error) {
+        console.error(
+          "Conversion history query error:",
+          error
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            "Unable to load conversion history.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        count: data?.length || 0,
+        history: data || [],
+      });
+    } catch (error) {
+      console.error(
+        "Conversion history route error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to load conversion history.",
+      });
+    }
+  }
+);
 
 module.exports =
   router;
