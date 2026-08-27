@@ -59,16 +59,6 @@ const upload = multer({
 
 /* ============================================================
    ADAPTIVE FINANCIAL OUTPUT MODES
-
-   These modes use:
-
-   OpenAI JSON
-        ↓
-   documentType
-        ↓
-   adaptive financial schema
-        ↓
-   CSV
 ============================================================ */
 
 const FINANCIAL_OUTPUT_MODES =
@@ -112,7 +102,10 @@ function getOutputExtension(
 
 
 /* ============================================================
-   BUILD OUTPUT FILE NAME
+   BUILD FALLBACK OUTPUT FILE NAME
+
+   Used before document classification is available and for
+   modes where no document type is detected.
 ============================================================ */
 
 function buildOutputFileName(
@@ -139,10 +132,136 @@ function buildOutputFileName(
 
 
 /* ============================================================
-   CLEAN JSON RESPONSE
+   BUILD FRIENDLY OUTPUT FILE NAME
 
-   Models should return raw JSON, but this safely removes
-   accidental Markdown fences without changing JSON content.
+   Converts detected document types into readable filenames.
+
+   Examples:
+   bank_statement.csv
+   medical_eob.csv
+   invoice.csv
+   receipt.csv
+
+   The batch index guarantees that files remain unique.
+============================================================ */
+
+function buildFriendlyOutputFileName(
+  documentType,
+  processingMode,
+  index
+) {
+  const normalized =
+    String(
+      documentType || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+
+  let baseName =
+    "extracted_data";
+
+  if (
+    normalized.includes("bank") &&
+    normalized.includes("statement")
+  ) {
+    baseName =
+      "bank_statement";
+
+  } else if (
+    normalized.includes("credit") &&
+    normalized.includes("card")
+  ) {
+    baseName =
+      "credit_card_statement";
+
+  } else if (
+    normalized.includes("invoice")
+  ) {
+    baseName =
+      "invoice";
+
+  } else if (
+    normalized.includes("receipt")
+  ) {
+    baseName =
+      "receipt";
+
+  } else if (
+    normalized.includes("eob") ||
+    normalized.includes(
+      "explanation_of_benefits"
+    )
+  ) {
+    baseName =
+      "medical_eob";
+
+  } else if (
+    normalized.includes("medical")
+  ) {
+    baseName =
+      "medical_document";
+
+  } else if (
+    normalized.includes("contract")
+  ) {
+    baseName =
+      "contract";
+
+  } else if (
+    normalized.includes("resume") ||
+    normalized.includes("cv")
+  ) {
+    baseName =
+      "resume";
+
+  } else if (
+    normalized.includes("table")
+  ) {
+    baseName =
+      "table_extraction";
+
+  } else if (
+    normalized &&
+    normalized !== "unknown"
+  ) {
+    /*
+     * If normalizeDocumentType returns another legitimate
+     * document type, preserve it instead of throwing it away.
+     */
+    baseName =
+      normalized.replace(
+        /[^a-z0-9_]+/g,
+        "_"
+      );
+  }
+
+  const extension =
+    getOutputExtension(
+      processingMode
+    );
+
+  /*
+   * index is zero-based.
+   *
+   * First file:
+   * bank_statement.csv
+   *
+   * Additional files:
+   * bank_statement_2.csv
+   * bank_statement_3.csv
+   */
+  const suffix =
+    index > 0
+      ? `_${index + 1}`
+      : "";
+
+  return `${baseName}${suffix}.${extension}`;
+}
+
+
+/* ============================================================
+   CLEAN JSON RESPONSE
 ============================================================ */
 
 function cleanJsonResponse(
@@ -152,7 +271,6 @@ function cleanJsonResponse(
     String(
       rawContent || ""
     ).trim();
-
 
   if (
     content.startsWith("```")
@@ -170,7 +288,6 @@ function cleanJsonResponse(
       );
   }
 
-
   return content.trim();
 }
 
@@ -187,9 +304,7 @@ function parseFinancialExtraction(
       rawContent
     );
 
-
   let parsed;
-
 
   try {
 
@@ -221,7 +336,6 @@ function parseFinancialExtraction(
       )
     );
 
-
     throw new Error(
       "Financial extraction returned invalid JSON."
     );
@@ -233,7 +347,6 @@ function parseFinancialExtraction(
     typeof parsed !== "object" ||
     Array.isArray(parsed)
   ) {
-
     throw new Error(
       "Financial extraction must return a JSON object."
     );
@@ -270,7 +383,6 @@ function parseFinancialExtraction(
         parsed
       )
     );
-
 
     throw new Error(
       "Financial extraction JSON is missing a rows array."
@@ -562,7 +674,6 @@ router.post(
       ] ||
       "unknown"
     );
-
 
     next();
   },
@@ -861,16 +972,26 @@ router.post(
 
 
       for (
-        const file
-        of req.files
+        let fileIndex = 0;
+        fileIndex < req.files.length;
+        fileIndex++
       ) {
+
+        const file =
+          req.files[fileIndex];
 
         const inputFileName =
           file.originalname ||
           "document.pdf";
 
 
-        const outputFileName =
+        /*
+         * Initial fallback filename.
+         *
+         * Once OpenAI determines the document type,
+         * this may be replaced with a friendly filename.
+         */
+        let outputFileName =
           buildOutputFileName(
             inputFileName,
             processingMode
@@ -996,6 +1117,28 @@ router.post(
             console.log(
               "Schema column count:",
               schemaHeader.length
+            );
+
+
+            /* ==================================================
+               FRIENDLY OUTPUT FILENAME
+
+               IMPORTANT:
+               documentType is now available, so this is the
+               correct point to rename the generated output.
+            ================================================== */
+
+            outputFileName =
+              buildFriendlyOutputFileName(
+                documentType,
+                processingMode,
+                fileIndex
+              );
+
+
+            console.log(
+              "Friendly output filename:",
+              outputFileName
             );
 
 
@@ -1320,8 +1463,6 @@ router.post(
 
       /* ========================================================
          RECORD SUCCESSFUL USAGE
-
-         Each successfully processed PDF counts as one conversion.
       ======================================================== */
 
       try {
@@ -1463,6 +1604,7 @@ router.post(
   }
 );
 
+
 /* ============================================================
    POST /extract/download-all-zip
 ============================================================ */
@@ -1472,32 +1614,56 @@ router.post(
 
   async (req, res) => {
     try {
-      const { results } = req.body || {};
+      const { results } =
+        req.body || {};
 
-      if (!Array.isArray(results) || results.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: "No extraction results were provided.",
-        });
+      if (
+        !Array.isArray(results) ||
+        results.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "No extraction results were provided.",
+          });
       }
 
-      const successfulResults = results.filter((item) => {
-        return (
-          item &&
-          item.success === true &&
-          typeof item.content === "string" &&
-          item.content.trim().length > 0
+
+      const successfulResults =
+        results.filter(
+          (item) => {
+            return (
+              item &&
+              item.success === true &&
+              typeof item.content ===
+                "string" &&
+              item.content
+                .trim()
+                .length > 0
+            );
+          }
         );
-      });
 
-      if (successfulResults.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: "No successful files are available for ZIP download.",
-        });
+
+      if (
+        successfulResults.length ===
+        0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "No successful files are available for ZIP download.",
+          });
       }
 
-      const zipFileName = `DataExtractAI_Results_${Date.now()}.zip`;
+
+      const zipFileName =
+        `DataExtractAI_Results_${Date.now()}.zip`;
+
 
       res.setHeader(
         "Content-Type",
@@ -1509,14 +1675,17 @@ router.post(
         `attachment; filename="${zipFileName}"`
       );
 
-      const archive = archiver(
-        "zip",
-        {
-          zlib: {
-            level: 9,
-          },
-        }
-      );
+
+      const archive =
+        archiver(
+          "zip",
+          {
+            zlib: {
+              level: 9,
+            },
+          }
+        );
+
 
       archive.on(
         "warning",
@@ -1528,6 +1697,7 @@ router.post(
         }
       );
 
+
       archive.on(
         "error",
         (error) => {
@@ -1536,62 +1706,112 @@ router.post(
             error
           );
 
-          if (!res.headersSent) {
-            return res.status(500).json({
-              success: false,
-              error: "Unable to create ZIP file.",
-            });
+          if (
+            !res.headersSent
+          ) {
+            return res
+              .status(500)
+              .json({
+                success:
+                  false,
+
+                error:
+                  "Unable to create ZIP file.",
+              });
           }
 
-          res.destroy(error);
+          res.destroy(
+            error
+          );
         }
       );
 
-      archive.pipe(res);
 
-      const usedNames = new Set();
+      archive.pipe(
+        res
+      );
 
-      for (let index = 0; index < successfulResults.length; index++) {
-        const item = successfulResults[index];
+
+      const usedNames =
+        new Set();
+
+
+      for (
+        let index = 0;
+        index <
+          successfulResults.length;
+        index++
+      ) {
+
+        const item =
+          successfulResults[index];
+
 
         let outputFileName =
-          typeof item.outputFileName === "string" &&
-          item.outputFileName.trim().length > 0
-            ? item.outputFileName.trim()
+          typeof item.outputFileName ===
+            "string" &&
+          item.outputFileName
+            .trim()
+            .length > 0
+            ? item.outputFileName
+                .trim()
             : `extraction_${index + 1}.csv`;
 
-        outputFileName = outputFileName.replace(
-          /[\\/:*?"<>|]/g,
-          "_"
-        );
 
-        let uniqueFileName = outputFileName;
+        outputFileName =
+          outputFileName.replace(
+            /[\\/:*?"<>|]/g,
+            "_"
+          );
 
-        if (usedNames.has(uniqueFileName)) {
+
+        let uniqueFileName =
+          outputFileName;
+
+
+        if (
+          usedNames.has(
+            uniqueFileName
+          )
+        ) {
+
           const dotIndex =
-            uniqueFileName.lastIndexOf(".");
+            uniqueFileName
+              .lastIndexOf(".");
 
-          if (dotIndex > 0) {
+
+          if (
+            dotIndex > 0
+          ) {
+
             const base =
-              uniqueFileName.substring(
-                0,
-                dotIndex
-              );
+              uniqueFileName
+                .substring(
+                  0,
+                  dotIndex
+                );
 
             const extension =
-              uniqueFileName.substring(
-                dotIndex
-              );
+              uniqueFileName
+                .substring(
+                  dotIndex
+                );
 
             uniqueFileName =
               `${base}_${index + 1}${extension}`;
+
           } else {
+
             uniqueFileName =
               `${uniqueFileName}_${index + 1}`;
           }
         }
 
-        usedNames.add(uniqueFileName);
+
+        usedNames.add(
+          uniqueFileName
+        );
+
 
         archive.append(
           item.content,
@@ -1602,32 +1822,47 @@ router.post(
         );
       }
 
+
       console.log(
         `ZIP download prepared with ${successfulResults.length} file(s).`
       );
 
+
       await archive.finalize();
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         "Download-all ZIP error:",
         error
       );
 
-      if (!res.headersSent) {
-        return res.status(500).json({
-          success: false,
-          error:
-            error?.message ||
-            "Unable to create ZIP file.",
-        });
+
+      if (
+        !res.headersSent
+      ) {
+
+        return res
+          .status(500)
+          .json({
+            success:
+              false,
+
+            error:
+              error
+                ?.message ||
+              "Unable to create ZIP file.",
+          });
       }
+
 
       res.end();
     }
   }
 );
 
+
 module.exports =
   router;
-  
-  
