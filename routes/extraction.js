@@ -30,6 +30,8 @@ const {
 
 const router = express.Router();
 
+const archiver = require("archiver");
+
 
 /* ============================================================
    SUPABASE
@@ -1461,6 +1463,171 @@ router.post(
   }
 );
 
+/* ============================================================
+   POST /extract/download-all-zip
+============================================================ */
+
+router.post(
+  "/download-all-zip",
+
+  async (req, res) => {
+    try {
+      const { results } = req.body || {};
+
+      if (!Array.isArray(results) || results.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "No extraction results were provided.",
+        });
+      }
+
+      const successfulResults = results.filter((item) => {
+        return (
+          item &&
+          item.success === true &&
+          typeof item.content === "string" &&
+          item.content.trim().length > 0
+        );
+      });
+
+      if (successfulResults.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "No successful files are available for ZIP download.",
+        });
+      }
+
+      const zipFileName = `DataExtractAI_Results_${Date.now()}.zip`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/zip"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${zipFileName}"`
+      );
+
+      const archive = archiver(
+        "zip",
+        {
+          zlib: {
+            level: 9,
+          },
+        }
+      );
+
+      archive.on(
+        "warning",
+        (error) => {
+          console.warn(
+            "ZIP warning:",
+            error
+          );
+        }
+      );
+
+      archive.on(
+        "error",
+        (error) => {
+          console.error(
+            "ZIP creation error:",
+            error
+          );
+
+          if (!res.headersSent) {
+            return res.status(500).json({
+              success: false,
+              error: "Unable to create ZIP file.",
+            });
+          }
+
+          res.destroy(error);
+        }
+      );
+
+      archive.pipe(res);
+
+      const usedNames = new Set();
+
+      for (let index = 0; index < successfulResults.length; index++) {
+        const item = successfulResults[index];
+
+        let outputFileName =
+          typeof item.outputFileName === "string" &&
+          item.outputFileName.trim().length > 0
+            ? item.outputFileName.trim()
+            : `extraction_${index + 1}.csv`;
+
+        outputFileName = outputFileName.replace(
+          /[\\/:*?"<>|]/g,
+          "_"
+        );
+
+        let uniqueFileName = outputFileName;
+
+        if (usedNames.has(uniqueFileName)) {
+          const dotIndex =
+            uniqueFileName.lastIndexOf(".");
+
+          if (dotIndex > 0) {
+            const base =
+              uniqueFileName.substring(
+                0,
+                dotIndex
+              );
+
+            const extension =
+              uniqueFileName.substring(
+                dotIndex
+              );
+
+            uniqueFileName =
+              `${base}_${index + 1}${extension}`;
+          } else {
+            uniqueFileName =
+              `${uniqueFileName}_${index + 1}`;
+          }
+        }
+
+        usedNames.add(uniqueFileName);
+
+        archive.append(
+          item.content,
+          {
+            name:
+              uniqueFileName,
+          }
+        );
+      }
+
+      console.log(
+        `ZIP download prepared with ${successfulResults.length} file(s).`
+      );
+
+      await archive.finalize();
+    } catch (error) {
+      console.error(
+        "Download-all ZIP error:",
+        error
+      );
+
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+          error:
+            error?.message ||
+            "Unable to create ZIP file.",
+        });
+      }
+
+      res.end();
+    }
+  }
+);
 
 module.exports =
   router;
+  
+  
