@@ -1939,5 +1939,121 @@ router.get(
   }
 );
 
+/* ============================================================
+   DELETE /extract/conversion-history/:id
+============================================================ */
+
+router.delete(
+  "/conversion-history/:id",
+
+  async (req, res) => {
+    try {
+      const recordId =
+        req.params.id;
+
+      const firebaseUid =
+        req.query.firebase_uid;
+
+      /* ========================================================
+         VALIDATE REQUEST
+      ======================================================== */
+
+      if (
+        !recordId ||
+        String(recordId).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing conversion history record id.",
+        });
+      }
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing firebase_uid.",
+        });
+      }
+
+      /* ========================================================
+         DELETE ONLY THIS USER'S RECORD
+      ======================================================== */
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("conversion_history")
+        .delete()
+        .eq(
+          "id",
+          String(recordId).trim()
+        )
+        .eq(
+          "firebase_uid",
+          String(firebaseUid).trim()
+        )
+        .select("id");
+
+      if (error) {
+        console.error(
+          "Conversion history delete error:",
+          error
+        );
+
+        return res.status(500).json({
+          success: false,
+          error: "Unable to delete conversion history.",
+        });
+      }
+
+      /* ========================================================
+         RECORD NOT FOUND / DOES NOT BELONG TO USER
+      ======================================================== */
+
+      if (
+        !Array.isArray(data) ||
+        data.length === 0
+      ) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Conversion history record not found or does not belong to this user.",
+        });
+      }
+
+      console.log(
+        "Conversion history deleted:",
+        recordId
+      );
+
+      /* ========================================================
+         SUCCESS
+      ======================================================== */
+
+      return res.status(200).json({
+        success: true,
+        deletedId: recordId,
+      });
+
+    } catch (error) {
+      console.error(
+        "Conversion history delete route error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to delete conversion history.",
+      });
+    }
+  }
+);
+
 module.exports =
   router;
