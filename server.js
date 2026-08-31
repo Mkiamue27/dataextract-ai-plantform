@@ -679,6 +679,85 @@ app.post(
   }
 );
 
+/* ============================================================
+   SUBMIT USER FEEDBACK
+============================================================ */
+
+app.post(
+  "/feedback",
+
+  async (req, res) => {
+    const {
+      firebase_uid,
+      feedback_type,
+      reason,
+      extraction_id,
+    } = req.body;
+
+    // Required fields
+    if (!firebase_uid || !feedback_type) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "firebase_uid and feedback_type are required.",
+      });
+    }
+
+    // Only allow the feedback types used by the app
+    if (
+      feedback_type !== "helpful" &&
+      feedback_type !== "not_helpful"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "feedback_type must be helpful or not_helpful.",
+      });
+    }
+
+    try {
+      const { data, error } =
+        await supabase
+          .from("feedback")
+          .insert({
+            firebase_uid,
+            feedback_type,
+            reason: reason || null,
+            extraction_id:
+              extraction_id || null,
+          })
+          .select()
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(
+        "Feedback submitted:",
+        feedback_type,
+        firebase_uid
+      );
+
+      return res.status(201).json({
+        success: true,
+        feedback: data,
+      });
+
+    } catch (error) {
+      console.error(
+        "Feedback submission error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Unable to submit feedback.",
+      });
+    }
+  }
+);
 
 /* ============================================================
    404 HANDLER
