@@ -591,39 +591,33 @@ async function recordConversionHistory({
   processingMode,
   status,
 }) {
-
   const {
+    data,
     error,
   } = await supabase
-    .from(
-      "conversion_history"
-    )
+    .from("conversion_history")
     .insert({
-      firebase_uid:
-        firebaseUid,
+      firebase_uid: firebaseUid,
 
-      timestamp:
-        new Date()
-          .toISOString(),
+      timestamp: new Date().toISOString(),
 
-      input_file_name:
-        inputFileName,
+      input_file_name: inputFileName,
 
-      output_file_name:
-        outputFileName,
+      output_file_name: outputFileName,
 
-      processing_mode:
-        processingMode,
+      processing_mode: processingMode,
 
       status,
-    });
-
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw error;
   }
-}
 
+  return data?.id?.toString() ?? null;
+}
 
 /* ============================================================
    POST /extract
