@@ -1278,77 +1278,61 @@ try {
              SUCCESS RESULT
           ==================================================== */
 
-          results.push({
-            filename:
-              inputFileName,
+        results.push({
+  id: historyId,
 
-            outputFileName,
+  filename:
+    inputFileName,
 
-            mimeType:
-              file.mimetype,
+  outputFileName,
 
-            processingMode,
+  mimeType:
+    file.mimetype,
 
-            documentType,
+  processingMode,
 
-            schemaHeader,
+  documentType,
 
-            success:
-              true,
+  schemaHeader,
 
-            status:
-              "completed",
+  success:
+    true,
 
-            content:
-              finalContent,
+  status:
+    "completed",
 
-            validation:
-              validation
-                ? {
-                    valid:
-                      validation
-                        .valid,
+  content:
+    finalContent,
 
-                    errors:
-                      validation
-                        .errors,
+  validation:
+    validation
+      ? {
+          valid:
+            validation
+              .valid,
 
-                    flaggedRows:
-                      validation
-                        .flaggedRows,
+          errors:
+            validation
+              .errors,
 
-                    expectedColumns:
-                      validation
-                        .expectedColumns,
+          flaggedRows:
+            validation
+              .flaggedRows,
 
-                    documentType:
-                      validation
-                        .documentType,
+          expectedColumns:
+            validation
+              .expectedColumns,
 
-                    header:
-                      validation
-                        .header,
-                  }
-                : null,
-          });
+          documentType:
+            validation
+              .documentType,
 
-
-          console.log(
-            `=== FILE COMPLETED: ${inputFileName} ===`
-          );
-
-
-        } catch (
-          fileError
-        ) {
-
-          console.error(
-            `Extraction failed for "${inputFileName}":`,
-            fileError
-              ?.message ||
-            fileError
-          );
-
+          header:
+            validation
+              .header,
+        }
+      : null,
+});
 
           /* ====================================================
              RECORD FAILED HISTORY
