@@ -619,6 +619,7 @@ async function recordConversionHistory({
   return data?.id?.toString() ?? null;
 }
 
+
 /* ============================================================
    POST /extract
 ============================================================ */
@@ -985,6 +986,7 @@ router.post(
          * Once OpenAI determines the document type,
          * this may be replaced with a friendly filename.
          */
+
         let outputFileName =
           buildOutputFileName(
             inputFileName,
@@ -1056,9 +1058,8 @@ router.post(
               ""
             ).length
           );
-
-
-          /* ====================================================
+		  
+		            /* ====================================================
              MODE-AWARE OUTPUT PROCESSING
           ==================================================== */
 
@@ -1244,116 +1245,141 @@ router.post(
              RECORD COMPLETED HISTORY
           ==================================================== */
 
-          let historyId = null;
+          let historyId =
+            null;
 
-try {
+          try {
 
-  historyId = await recordConversionHistory({
-    firebaseUid:
-      firebaseUid
-        .trim(),
+            historyId =
+              await recordConversionHistory({
+                firebaseUid:
+                  firebaseUid
+                    .trim(),
 
-    inputFileName,
+                inputFileName,
 
-    outputFileName,
+                outputFileName,
 
-    processingMode,
+                processingMode,
 
-    status:
-      "completed",
-  });
+                status:
+                  "completed",
+              });
 
-} catch (
-  historyError
-) {
+          } catch (
+            historyError
+          ) {
 
-  console.error(
-    `Failed to record conversion history for "${inputFileName}":`,
-    historyError
-  );
-}
+            console.error(
+              `Failed to record conversion history for "${inputFileName}":`,
+              historyError
+            );
+          }
 
 
           /* ====================================================
              SUCCESS RESULT
           ==================================================== */
 
-        results.push({
-  id: historyId,
+          results.push({
+            id:
+              historyId,
 
-  filename:
-    inputFileName,
+            filename:
+              inputFileName,
 
-  outputFileName,
+            outputFileName,
 
-  mimeType:
-    file.mimetype,
+            mimeType:
+              file.mimetype,
 
-  processingMode,
+            processingMode,
 
-  documentType,
+            documentType,
 
-  schemaHeader,
+            schemaHeader,
 
-  success:
-    true,
+            success:
+              true,
 
-  status:
-    "completed",
+            status:
+              "completed",
 
-  content:
-    finalContent,
+            content:
+              finalContent,
 
-  validation:
-    validation
-      ? {
-          valid:
-            validation
-              .valid,
+            validation:
+              validation
+                ? {
+                    valid:
+                      validation
+                        .valid,
 
-          errors:
-            validation
-              .errors,
+                    errors:
+                      validation
+                        .errors,
 
-          flaggedRows:
-            validation
-              .flaggedRows,
+                    flaggedRows:
+                      validation
+                        .flaggedRows,
 
-          expectedColumns:
-            validation
-              .expectedColumns,
+                    expectedColumns:
+                      validation
+                        .expectedColumns,
 
-          documentType:
-            validation
-              .documentType,
+                    documentType:
+                      validation
+                        .documentType,
 
-          header:
-            validation
-              .header,
-        }
-      : null,
-});
+                    header:
+                      validation
+                        .header,
+                  }
+                : null,
+          });
+
+
+          console.log(
+            `=== FILE COMPLETED: ${inputFileName} ===`
+          );
+
+
+        } catch (
+          fileError
+        ) {
+
+          console.error(
+            `Extraction failed for "${inputFileName}":`,
+            fileError
+              ?.message ||
+            fileError
+          );
+
 
           /* ====================================================
              RECORD FAILED HISTORY
           ==================================================== */
 
+          let failedHistoryId =
+            null;
+
           try {
 
-            await recordConversionHistory({
-              firebaseUid:
-                firebaseUid
-                  .trim(),
+            failedHistoryId =
+              await recordConversionHistory({
+                firebaseUid:
+                  firebaseUid
+                    .trim(),
 
-              inputFileName,
+                inputFileName,
 
-              outputFileName,
+                outputFileName,
 
-              processingMode,
+                processingMode,
 
-              status:
-                "failed",
-            });
+                status:
+                  "failed",
+              });
 
           } catch (
             historyError
@@ -1371,6 +1397,9 @@ try {
           ==================================================== */
 
           errors.push({
+            id:
+              failedHistoryId,
+
             filename:
               inputFileName,
 
@@ -1843,6 +1872,7 @@ router.post(
   }
 );
 
+
 /* ============================================================
    GET /extract/conversion-history
 ============================================================ */
@@ -1903,6 +1933,7 @@ router.get(
         count: data?.length || 0,
         history: data || [],
       });
+
     } catch (error) {
       console.error(
         "Conversion history route error:",
@@ -1919,6 +1950,7 @@ router.get(
   }
 );
 
+
 /* ============================================================
    DELETE /extract/conversion-history/:id
 ============================================================ */
@@ -1934,6 +1966,7 @@ router.delete(
       const firebaseUid =
         req.query.firebase_uid;
 
+
       /* ========================================================
          VALIDATE REQUEST
       ======================================================== */
@@ -1944,9 +1977,11 @@ router.delete(
       ) {
         return res.status(400).json({
           success: false,
-          error: "Missing conversion history record id.",
+          error:
+            "Missing conversion history record id.",
         });
       }
+
 
       if (
         !firebaseUid ||
@@ -1954,9 +1989,11 @@ router.delete(
       ) {
         return res.status(400).json({
           success: false,
-          error: "Missing firebase_uid.",
+          error:
+            "Missing firebase_uid.",
         });
       }
+
 
       /* ========================================================
          DELETE ONLY THIS USER'S RECORD
@@ -1978,6 +2015,7 @@ router.delete(
         )
         .select("id");
 
+
       if (error) {
         console.error(
           "Conversion history delete error:",
@@ -1986,9 +2024,11 @@ router.delete(
 
         return res.status(500).json({
           success: false,
-          error: "Unable to delete conversion history.",
+          error:
+            "Unable to delete conversion history.",
         });
       }
+
 
       /* ========================================================
          RECORD NOT FOUND / DOES NOT BELONG TO USER
@@ -2005,10 +2045,12 @@ router.delete(
         });
       }
 
+
       console.log(
         "Conversion history deleted:",
         recordId
       );
+
 
       /* ========================================================
          SUCCESS
@@ -2018,6 +2060,7 @@ router.delete(
         success: true,
         deletedId: recordId,
       });
+
 
     } catch (error) {
       console.error(
@@ -2034,6 +2077,7 @@ router.delete(
     }
   }
 );
+
 
 module.exports =
   router;
