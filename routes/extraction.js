@@ -1244,9 +1244,11 @@ router.post(
              RECORD COMPLETED HISTORY
           ==================================================== */
 
-          try {
+          let historyId = null;
 
-  const historyId = await recordConversionHistory({
+try {
+
+  historyId = await recordConversionHistory({
     firebaseUid:
       firebaseUid
         .trim(),
@@ -1263,13 +1265,13 @@ router.post(
 
 } catch (
   historyError
-)  {
+) {
 
-            console.error(
-              `Failed to record conversion history for "${inputFileName}":`,
-              historyError
-            );
-          }
+  console.error(
+    `Failed to record conversion history for "${inputFileName}":`,
+    historyError
+  );
+}
 
 
           /* ====================================================
