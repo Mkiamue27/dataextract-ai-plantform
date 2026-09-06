@@ -753,6 +753,12 @@ function getExtractionPrompt(
     case "ai_table":
       return TABLE_PROMPT;
 
+    case "ai_bank":
+      return FINANCIAL_CSV_PROMPT;
+
+    case "ai_medical":
+      return FINANCIAL_CSV_PROMPT;
+
     case "clean_data":
       return CLEAN_DATA_PROMPT;
 
