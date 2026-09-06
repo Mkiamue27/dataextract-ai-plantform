@@ -66,8 +66,9 @@ const FINANCIAL_OUTPUT_MODES =
     "pdf_csv",
     "pdf_excel",
     "pdf_sheets",
+    "ai_bank",
+    "ai_medical",
   ]);
-
 
 /* ============================================================
    OUTPUT FILE EXTENSIONS
@@ -92,8 +93,8 @@ function getOutputExtension(
       return "csv";
 
     case "ai_table":
-      return "csv";
-
+    case "ai_bank":
+    case "ai_medical":
     case "pdf_csv":
     default:
       return "csv";
