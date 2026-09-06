@@ -1873,7 +1873,6 @@ router.post(
   }
 );
 
-
 /* ============================================================
    GET /extract/conversion-history
 ============================================================ */
@@ -1886,15 +1885,26 @@ router.get(
       const firebaseUid =
         req.query.firebase_uid;
 
+
+      /* ========================================================
+         VALIDATE REQUEST
+      ======================================================== */
+
       if (
         !firebaseUid ||
         String(firebaseUid).trim().length === 0
       ) {
         return res.status(400).json({
           success: false,
-          error: "Missing firebase_uid.",
+          error:
+            "Missing firebase_uid.",
         });
       }
+
+
+      /* ========================================================
+         LOAD THIS USER'S CONVERSION HISTORY
+      ======================================================== */
 
       const {
         data,
@@ -1902,7 +1912,7 @@ router.get(
       } = await supabase
         .from("conversion_history")
         .select(
-          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status"
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite"
         )
         .eq(
           "firebase_uid",
@@ -1915,6 +1925,7 @@ router.get(
           }
         )
         .limit(50);
+
 
       if (error) {
         console.error(
@@ -1929,11 +1940,19 @@ router.get(
         });
       }
 
+
+      /* ========================================================
+         SUCCESS
+      ======================================================== */
+
       return res.status(200).json({
         success: true,
-        count: data?.length || 0,
-        history: data || [],
+        count:
+          data?.length || 0,
+        history:
+          data || [],
       });
+
 
     } catch (error) {
       console.error(
@@ -1946,6 +1965,170 @@ router.get(
         error:
           error?.message ||
           "Unable to load conversion history.",
+      });
+    }
+  }
+);
+
+
+/* ============================================================
+   PATCH /extract/conversion-history/:id/favorite
+============================================================ */
+
+router.patch(
+  "/conversion-history/:id/favorite",
+
+  async (req, res) => {
+    try {
+      const recordId =
+        req.params.id;
+
+      const firebaseUid =
+        req.body?.firebase_uid;
+
+      const isFavorite =
+        req.body?.is_favorite;
+
+
+      /* ========================================================
+         VALIDATE RECORD ID
+      ======================================================== */
+
+      if (
+        !recordId ||
+        String(recordId).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing conversion history record id.",
+        });
+      }
+
+
+      /* ========================================================
+         VALIDATE USER
+      ======================================================== */
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing firebase_uid.",
+        });
+      }
+
+
+      /* ========================================================
+         VALIDATE FAVORITE VALUE
+      ======================================================== */
+
+      if (
+        typeof isFavorite !== "boolean"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "is_favorite must be true or false.",
+        });
+      }
+
+
+      /* ========================================================
+         UPDATE ONLY THIS USER'S RECORD
+      ======================================================== */
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("conversion_history")
+        .update({
+          is_favorite:
+            isFavorite,
+        })
+        .eq(
+          "id",
+          String(recordId).trim()
+        )
+        .eq(
+          "firebase_uid",
+          String(firebaseUid).trim()
+        )
+        .select(
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite"
+        );
+
+
+      if (error) {
+        console.error(
+          "Favorite update error:",
+          error
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            "Unable to update favorite status.",
+        });
+      }
+
+
+      /* ========================================================
+         RECORD NOT FOUND / DOES NOT BELONG TO USER
+      ======================================================== */
+
+      if (
+        !Array.isArray(data) ||
+        data.length === 0
+      ) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Conversion history record not found or does not belong to this user.",
+        });
+      }
+
+
+      console.log(
+        "Favorite status updated:",
+        {
+          recordId:
+            String(recordId).trim(),
+
+          firebaseUid:
+            String(firebaseUid).trim(),
+
+          isFavorite,
+        }
+      );
+
+
+      /* ========================================================
+         SUCCESS
+      ======================================================== */
+
+      return res.status(200).json({
+        success: true,
+        record:
+          data[0],
+      });
+
+
+    } catch (error) {
+      console.error(
+        "Favorite update route error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to update favorite status.",
       });
     }
   }
@@ -2059,7 +2242,8 @@ router.delete(
 
       return res.status(200).json({
         success: true,
-        deletedId: recordId,
+        deletedId:
+          recordId,
       });
 
 
@@ -2079,6 +2263,10 @@ router.delete(
   }
 );
 
+
+/* ============================================================
+   EXPORT ROUTER
+============================================================ */
 
 module.exports =
   router;
