@@ -37,6 +37,8 @@ const PROCESSING_MODES = {
   PDF_SHEETS: "pdf_sheets",
   OCR_PDF: "ocr_pdf",
   AI_TABLE: "ai_table",
+  AI_BANK: "ai_bank",
+  AI_MEDICAL: "ai_medical",
   CLEAN_DATA: "clean_data",
 };
 
