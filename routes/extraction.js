@@ -591,6 +591,7 @@ async function recordConversionHistory({
   outputFileName,
   processingMode,
   status,
+  content,
 }) {
   const {
     data,
@@ -598,26 +599,72 @@ async function recordConversionHistory({
   } = await supabase
     .from("conversion_history")
     .insert({
-      firebase_uid: firebaseUid,
+      firebase_uid:
+        firebaseUid,
 
-      timestamp: new Date().toISOString(),
+      timestamp:
+        new Date().toISOString(),
 
-      input_file_name: inputFileName,
+      input_file_name:
+        inputFileName,
 
-      output_file_name: outputFileName,
+      output_file_name:
+        outputFileName,
 
-      processing_mode: processingMode,
+      processing_mode:
+        processingMode,
 
-      status,
+      status:
+        status,
+
+      /*
+       * Store the generated extraction output so the
+       * Extraction History Download button can recreate
+       * the CSV/JSON/other output later.
+       */
+      content:
+        content || "",
     })
     .select("id")
     .single();
 
+
   if (error) {
+    console.error(
+      "Conversion history insert error:",
+      error
+    );
+
     throw error;
   }
 
-  return data?.id?.toString() ?? null;
+
+  console.log(
+    "Conversion history saved:",
+    {
+      id:
+        data?.id || null,
+
+      inputFileName,
+
+      outputFileName,
+
+      processingMode,
+
+      status,
+
+      contentLength:
+        String(
+          content || ""
+        ).length,
+    }
+  );
+
+
+  return (
+    data?.id?.toString() ??
+    null
+  );
 }
 
 
