@@ -1125,12 +1125,15 @@ router.post(
             ================================================== */
 
             outputFileName =
-              buildFriendlyOutputFileName(
-                documentType,
-                processingMode,
-                fileIndex
-              );
+  buildOutputFileName(
+    inputFileName,
+    processingMode
+  );
 
+console.log(
+  "Preserved output filename:",
+  outputFileName
+);
 
             console.log(
               "Friendly output filename:",
