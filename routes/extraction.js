@@ -1402,41 +1402,45 @@ console.log(
           );
 
 
-          /* ====================================================
-             RECORD FAILED HISTORY
-          ==================================================== */
+          /* ============================================================
+   RECORD FAILED HISTORY
+============================================================ */
 
-          let failedHistoryId =
-            null;
+let failedHistoryId =
+  null;
 
-          try {
+try {
 
-            failedHistoryId =
-              await recordConversionHistory({
-                firebaseUid:
-                  firebaseUid
-                    .trim(),
+  failedHistoryId =
+    await recordConversionHistory({
+      firebaseUid:
+        firebaseUid.trim(),
 
-                inputFileName,
+      inputFileName:
+        inputFileName,
 
-                outputFileName,
+      outputFileName:
+        outputFileName,
 
-                processingMode,
+      processingMode:
+        processingMode,
 
-                status:
-                  "failed",
-              });
+      status:
+        "failed",
 
-          } catch (
-            historyError
-          ) {
+      content:
+        "",
+    });
 
-            console.error(
-              `Failed to record failed conversion history for "${inputFileName}":`,
-              historyError
-            );
-          }
+} catch (
+  historyError
+) {
 
+  console.error(
+    `Failed to record failed conversion history for "${inputFileName}":`,
+    historyError
+  );
+}
 
           /* ====================================================
              FAILED RESULT
