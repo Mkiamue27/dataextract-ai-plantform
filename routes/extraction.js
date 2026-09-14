@@ -1915,7 +1915,7 @@ router.get(
       } = await supabase
         .from("conversion_history")
         .select(
-          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite"
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite, content"
         )
         .eq(
           "firebase_uid",
@@ -1950,8 +1950,10 @@ router.get(
 
       return res.status(200).json({
         success: true,
+
         count:
           data?.length || 0,
+
         history:
           data || [],
       });
@@ -2062,7 +2064,7 @@ router.patch(
           String(firebaseUid).trim()
         )
         .select(
-          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite"
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite, content"
         );
 
 
@@ -2116,6 +2118,7 @@ router.patch(
 
       return res.status(200).json({
         success: true,
+
         record:
           data[0],
       });
@@ -2245,6 +2248,7 @@ router.delete(
 
       return res.status(200).json({
         success: true,
+
         deletedId:
           recordId,
       });
