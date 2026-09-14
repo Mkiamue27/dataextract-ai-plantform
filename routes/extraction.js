@@ -1135,11 +1135,6 @@ console.log(
   outputFileName
 );
 
-            console.log(
-              "Friendly output filename:",
-              outputFileName
-            );
-
 
             console.log(
               "=== VALIDATING ADAPTIVE CSV ==="
@@ -1875,7 +1870,6 @@ router.post(
     }
   }
 );
-
 /* ============================================================
    GET /extract/conversion-history
 ============================================================ */
