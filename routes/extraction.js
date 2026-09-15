@@ -1096,23 +1096,26 @@ router.post(
               schemaHeader.length
             );
 
+/* ==================================================
+   BUILD FRIENDLY OUTPUT FILENAME FROM DETECTED TYPE
+================================================== */
 
-            /* ==================================================
-               PRESERVE ORIGINAL OUTPUT FILENAME
-            ================================================== */
+outputFileName =
+  buildFriendlyOutputFileName(
+    documentType,
+    processingMode,
+    fileIndex
+  );
 
-            outputFileName =
-              buildOutputFileName(
-                inputFileName,
-                processingMode
-              );
+console.log(
+  "Detected document type:",
+  documentType
+);
 
-
-            console.log(
-              "Preserved output filename:",
-              outputFileName
-            );
-
+console.log(
+  "Friendly output filename:",
+  outputFileName
+);
 
             /* ==================================================
                VALIDATE ADAPTIVE CSV
