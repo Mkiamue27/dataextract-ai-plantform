@@ -552,6 +552,7 @@ async function recordConversionHistory({
   inputFileName,
   outputFileName,
   processingMode,
+  documentType,
   status,
   content,
 }) {
@@ -575,6 +576,9 @@ async function recordConversionHistory({
 
       processing_mode:
         processingMode,
+
+      document_type:
+        documentType || "",
 
       status:
         status,
@@ -607,6 +611,8 @@ async function recordConversionHistory({
       outputFileName,
 
       processingMode,
+
+      documentType,
 
       status,
 
