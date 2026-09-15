@@ -70,6 +70,7 @@ const FINANCIAL_OUTPUT_MODES =
     "ai_medical",
   ]);
 
+
 /* ============================================================
    OUTPUT FILE EXTENSIONS
 ============================================================ */
@@ -104,9 +105,6 @@ function getOutputExtension(
 
 /* ============================================================
    BUILD FALLBACK OUTPUT FILE NAME
-
-   Used before document classification is available and for
-   modes where no document type is detected.
 ============================================================ */
 
 function buildOutputFileName(
@@ -134,16 +132,6 @@ function buildOutputFileName(
 
 /* ============================================================
    BUILD FRIENDLY OUTPUT FILE NAME
-
-   Converts detected document types into readable filenames.
-
-   Examples:
-   bank_statement.csv
-   medical_eob.csv
-   invoice.csv
-   receipt.csv
-
-   The batch index guarantees that files remain unique.
 ============================================================ */
 
 function buildFriendlyOutputFileName(
@@ -226,10 +214,6 @@ function buildFriendlyOutputFileName(
     normalized &&
     normalized !== "unknown"
   ) {
-    /*
-     * If normalizeDocumentType returns another legitimate
-     * document type, preserve it instead of throwing it away.
-     */
     baseName =
       normalized.replace(
         /[^a-z0-9_]+/g,
@@ -242,16 +226,6 @@ function buildFriendlyOutputFileName(
       processingMode
     );
 
-  /*
-   * index is zero-based.
-   *
-   * First file:
-   * bank_statement.csv
-   *
-   * Additional files:
-   * bank_statement_2.csv
-   * bank_statement_3.csv
-   */
   const suffix =
     index > 0
       ? `_${index + 1}`
@@ -354,19 +328,11 @@ function parseFinancialExtraction(
   }
 
 
-  /* ============================================================
-     DOCUMENT TYPE
-  ============================================================ */
-
   const documentType =
     normalizeDocumentType(
       parsed.documentType
     );
 
-
-  /* ============================================================
-     ROWS
-  ============================================================ */
 
   if (
     !Array.isArray(
@@ -390,10 +356,6 @@ function parseFinancialExtraction(
     );
   }
 
-
-  /* ============================================================
-     SCHEMA
-  ============================================================ */
 
   const schema =
     getFinancialSchema(
@@ -617,11 +579,6 @@ async function recordConversionHistory({
       status:
         status,
 
-      /*
-       * Store the generated extraction output so the
-       * Extraction History Download button can recreate
-       * the CSV/JSON/other output later.
-       */
       content:
         content || "",
     })
@@ -676,10 +633,6 @@ router.post(
 
   "/",
 
-  /* ============================================================
-     DEBUG CHECKPOINT 1
-  ============================================================ */
-
   (
     req,
     res,
@@ -722,19 +675,11 @@ router.post(
   },
 
 
-  /* ============================================================
-     MULTER FILE PARSING
-  ============================================================ */
-
   upload.array(
     "files",
     MAX_FILES_PER_BATCH
   ),
 
-
-  /* ============================================================
-     DEBUG CHECKPOINT 2
-  ============================================================ */
 
   (
     req,
@@ -783,10 +728,6 @@ router.post(
   },
 
 
-  /* ============================================================
-     DEBUG CHECKPOINT 3
-  ============================================================ */
-
   (
     req,
     res,
@@ -818,16 +759,8 @@ router.post(
   },
 
 
-  /* ============================================================
-     USAGE LIMIT
-  ============================================================ */
-
   checkUsageLimit,
 
-
-  /* ============================================================
-     DEBUG CHECKPOINT 4
-  ============================================================ */
 
   (
     req,
@@ -841,9 +774,8 @@ router.post(
 
     next();
   },
-
-
-  /* ============================================================
+  
+    /* ============================================================
      EXTRACTION HANDLER
   ============================================================ */
 
@@ -1023,6 +955,7 @@ router.post(
         const file =
           req.files[fileIndex];
 
+
         const inputFileName =
           file.originalname ||
           "document.pdf";
@@ -1030,9 +963,6 @@ router.post(
 
         /*
          * Initial fallback filename.
-         *
-         * Once OpenAI determines the document type,
-         * this may be replaced with a friendly filename.
          */
 
         let outputFileName =
@@ -1099,6 +1029,7 @@ router.post(
             "=== OPENAI RESPONSE RECEIVED ==="
           );
 
+
           console.log(
             "OpenAI response length:",
             String(
@@ -1106,8 +1037,9 @@ router.post(
               ""
             ).length
           );
-		  
-		            /* ====================================================
+
+
+          /* ====================================================
              MODE-AWARE OUTPUT PROCESSING
           ==================================================== */
 
@@ -1146,6 +1078,7 @@ router.post(
               adaptiveOutput
                 .documentType;
 
+
             schemaHeader =
               adaptiveOutput
                 .schema
@@ -1157,6 +1090,7 @@ router.post(
               documentType
             );
 
+
             console.log(
               "Schema column count:",
               schemaHeader.length
@@ -1164,24 +1098,25 @@ router.post(
 
 
             /* ==================================================
-               FRIENDLY OUTPUT FILENAME
-
-               IMPORTANT:
-               documentType is now available, so this is the
-               correct point to rename the generated output.
+               PRESERVE ORIGINAL OUTPUT FILENAME
             ================================================== */
 
             outputFileName =
-  buildOutputFileName(
-    inputFileName,
-    processingMode
-  );
+              buildOutputFileName(
+                inputFileName,
+                processingMode
+              );
 
-console.log(
-  "Preserved output filename:",
-  outputFileName
-);
 
+            console.log(
+              "Preserved output filename:",
+              outputFileName
+            );
+
+
+            /* ==================================================
+               VALIDATE ADAPTIVE CSV
+            ================================================== */
 
             console.log(
               "=== VALIDATING ADAPTIVE CSV ==="
@@ -1202,6 +1137,7 @@ console.log(
               validation.valid
             );
 
+
             console.log(
               "CSV validation errors:",
               validation
@@ -1209,12 +1145,14 @@ console.log(
                 .length
             );
 
+
             console.log(
               "CSV validated rows:",
               validation
                 .rows
                 .length
             );
+
 
             console.log(
               "Cleaned CSV length:",
@@ -1252,11 +1190,13 @@ console.log(
             outputFileName
           );
 
+
           console.log(
             "Final document type:",
             documentType ||
             "not-applicable"
           );
+
 
           console.log(
             "Final content length:",
@@ -1294,6 +1234,7 @@ console.log(
           let historyId =
             null;
 
+
           try {
 
             historyId =
@@ -1310,6 +1251,9 @@ console.log(
 
                 status:
                   "completed",
+
+                content:
+                  finalContent,
               });
 
           } catch (
@@ -1402,45 +1346,47 @@ console.log(
           );
 
 
-          /* ============================================================
-   RECORD FAILED HISTORY
-============================================================ */
+          /* ====================================================
+             RECORD FAILED HISTORY
+          ==================================================== */
 
-let failedHistoryId =
-  null;
+          let failedHistoryId =
+            null;
 
-try {
 
-  failedHistoryId =
-    await recordConversionHistory({
-      firebaseUid:
-        firebaseUid.trim(),
+          try {
 
-      inputFileName:
-        inputFileName,
+            failedHistoryId =
+              await recordConversionHistory({
+                firebaseUid:
+                  firebaseUid.trim(),
 
-      outputFileName:
-        outputFileName,
+                inputFileName:
+                  inputFileName,
 
-      processingMode:
-        processingMode,
+                outputFileName:
+                  outputFileName,
 
-      status:
-        "failed",
+                processingMode:
+                  processingMode,
 
-      content:
-        "",
-    });
+                status:
+                  "failed",
 
-} catch (
-  historyError
-) {
+                content:
+                  "",
+              });
 
-  console.error(
-    `Failed to record failed conversion history for "${inputFileName}":`,
-    historyError
-  );
-}
+          } catch (
+            historyError
+          ) {
+
+            console.error(
+              `Failed to record failed conversion history for "${inputFileName}":`,
+              historyError
+            );
+          }
+
 
           /* ====================================================
              FAILED RESULT
@@ -1484,6 +1430,7 @@ try {
         console.error(
           "=== EXTRACTION BATCH FAILED ==="
         );
+
 
         console.error(
           "Failed files:",
@@ -1552,21 +1499,25 @@ try {
         "=== EXTRACTION RESPONSE READY ==="
       );
 
+
       console.log(
         "Total files:",
         req.files
           .length
       );
 
+
       console.log(
         "Successful files:",
         results.length
       );
 
+
       console.log(
         "Failed files:",
         errors.length
       );
+
 
       console.log(
         "Response results:",
@@ -1599,6 +1550,7 @@ try {
           })
         )
       );
+
 
       console.log(
         "========================================"
@@ -1641,6 +1593,7 @@ try {
         "=== EXTRACTION ROUTE ERROR ==="
       );
 
+
       console.error(
         error
           ?.message ||
@@ -1673,17 +1626,26 @@ router.post(
 
   async (req, res) => {
     try {
-      const { results } =
+
+      const {
+        results,
+      } =
         req.body || {};
 
+
       if (
-        !Array.isArray(results) ||
+        !Array.isArray(
+          results
+        ) ||
         results.length === 0
       ) {
+
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
+
             error:
               "No extraction results were provided.",
           });
@@ -1693,6 +1655,7 @@ router.post(
       const successfulResults =
         results.filter(
           (item) => {
+
             return (
               item &&
               item.success === true &&
@@ -1710,10 +1673,13 @@ router.post(
         successfulResults.length ===
         0
       ) {
+
         return res
           .status(400)
           .json({
-            success: false,
+            success:
+              false,
+
             error:
               "No successful files are available for ZIP download.",
           });
@@ -1728,6 +1694,7 @@ router.post(
         "Content-Type",
         "application/zip"
       );
+
 
       res.setHeader(
         "Content-Disposition",
@@ -1749,6 +1716,7 @@ router.post(
       archive.on(
         "warning",
         (error) => {
+
           console.warn(
             "ZIP warning:",
             error
@@ -1760,14 +1728,17 @@ router.post(
       archive.on(
         "error",
         (error) => {
+
           console.error(
             "ZIP creation error:",
             error
           );
 
+
           if (
             !res.headersSent
           ) {
+
             return res
               .status(500)
               .json({
@@ -1778,6 +1749,7 @@ router.post(
                   "Unable to create ZIP file.",
               });
           }
+
 
           res.destroy(
             error
@@ -1850,11 +1822,13 @@ router.post(
                   dotIndex
                 );
 
+
             const extension =
               uniqueFileName
                 .substring(
                   dotIndex
                 );
+
 
             uniqueFileName =
               `${base}_${index + 1}${extension}`;
@@ -1921,6 +1895,7 @@ router.post(
     }
   }
 );
+
 /* ============================================================
    GET /extract/conversion-history
 ============================================================ */
