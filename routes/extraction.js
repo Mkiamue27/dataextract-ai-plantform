@@ -542,7 +542,6 @@ async function recordSuccessfulUsage(
   }
 }
 
-
 /* ============================================================
    CONVERSION HISTORY
 ============================================================ */
@@ -629,7 +628,6 @@ async function recordConversionHistory({
     null
   );
 }
-
 
 /* ============================================================
    POST /extract
@@ -1102,7 +1100,7 @@ router.post(
               schemaHeader.length
             );
 
-/* ==================================================
+			/* ==================================================
    BUILD FRIENDLY OUTPUT FILENAME FROM DETECTED TYPE
 ================================================== */
 
@@ -1122,6 +1120,7 @@ console.log(
   "Friendly output filename:",
   outputFileName
 );
+
 
             /* ==================================================
                VALIDATE ADAPTIVE CSV
@@ -1235,45 +1234,39 @@ console.log(
             );
           }
 
+		/* ====================================================
+   RECORD COMPLETED HISTORY
+==================================================== */
 
-          /* ====================================================
-             RECORD COMPLETED HISTORY
-          ==================================================== */
+let historyId = null;
 
-          let historyId =
-            null;
+try {
+  historyId =
+    await recordConversionHistory({
+      firebaseUid:
+        firebaseUid.trim(),
 
+      inputFileName,
 
-          try {
+      outputFileName,
 
-            historyId =
-              await recordConversionHistory({
-                firebaseUid:
-                  firebaseUid
-                    .trim(),
+      processingMode,
 
-                inputFileName,
+      documentType,
 
-                outputFileName,
+      status:
+        "completed",
 
-                processingMode,
+      content:
+        finalContent,
+    });
 
-                status:
-                  "completed",
-
-                content:
-                  finalContent,
-              });
-
-          } catch (
-            historyError
-          ) {
-
-            console.error(
-              `Failed to record conversion history for "${inputFileName}":`,
-              historyError
-            );
-          }
+} catch (historyError) {
+  console.error(
+    `Failed to record conversion history for "${inputFileName}":`,
+    historyError
+  );
+}
 
 
           /* ====================================================
@@ -1354,128 +1347,83 @@ console.log(
             fileError
           );
 
+		/* ====================================================
+   RECORD FAILED HISTORY
+==================================================== */
 
-          /* ====================================================
-             RECORD FAILED HISTORY
-          ==================================================== */
+let failedHistoryId =
+  null;
 
-          let failedHistoryId =
-            null;
+try {
 
+  failedHistoryId =
+    await recordConversionHistory({
+      firebaseUid:
+        firebaseUid.trim(),
 
-          try {
+      inputFileName:
+        inputFileName,
 
-            failedHistoryId =
-              await recordConversionHistory({
-                firebaseUid:
-                  firebaseUid.trim(),
+      outputFileName:
+        outputFileName,
 
-                inputFileName:
-                  inputFileName,
+      processingMode:
+        processingMode,
 
-                outputFileName:
-                  outputFileName,
+      documentType:
+        typeof documentType !== "undefined"
+          ? documentType
+          : null,
 
-                processingMode:
-                  processingMode,
+      status:
+        "failed",
 
-                status:
-                  "failed",
+      content:
+        "",
+    });
 
-                content:
-                  "",
-              });
+} catch (
+  historyError
+) {
 
-          } catch (
-            historyError
-          ) {
-
-            console.error(
-              `Failed to record failed conversion history for "${inputFileName}":`,
-              historyError
-            );
-          }
-
-
-          /* ====================================================
-             FAILED RESULT
-          ==================================================== */
-
-          errors.push({
-            id:
-              failedHistoryId,
-
-            filename:
-              inputFileName,
-
-            outputFileName,
-
-            processingMode,
-
-            success:
-              false,
-
-            status:
-              "failed",
-
-            error:
-              fileError
-                ?.message ||
-              "Document extraction failed.",
-          });
-        }
-      }
+  console.error(
+    `Failed to record failed conversion history for "${inputFileName}":`,
+    historyError
+  );
+}
 
 
-      /* ========================================================
-         TOTAL FAILURE
-      ======================================================== */
+/* ====================================================
+   FAILED RESULT
+==================================================== */
 
-      if (
-        results.length ===
-        0
-      ) {
+errors.push({
+  id:
+    failedHistoryId,
 
-        console.error(
-          "=== EXTRACTION BATCH FAILED ==="
-        );
+  filename:
+    inputFileName,
 
+  outputFileName,
 
-        console.error(
-          "Failed files:",
-          errors.length
-        );
+  processingMode,
 
+  documentType:
+    typeof documentType !== "undefined"
+      ? documentType
+      : null,
 
-        return res
-          .status(500)
-          .json({
-            success:
-              false,
+  success:
+    false,
 
-            processingMode,
+  status:
+    "failed",
 
-            totalFiles:
-              req.files
-                .length,
-
-            successfulFiles:
-              0,
-
-            failedFiles:
-              errors.length,
-
-            partialSuccess:
-              false,
-
-            results:
-              [],
-
-            errors,
-          });
-      }
-
-
+  error:
+    fileError
+      ?.message ||
+    "Document extraction failed.",
+});
       /* ========================================================
          RECORD SUCCESSFUL USAGE
       ======================================================== */
@@ -1939,38 +1887,24 @@ router.get(
       ======================================================== */
 
       const {
-        data,
-        error,
-      } = await supabase
-        .from("conversion_history")
-        .select(
-          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite, content"
-        )
-        .eq(
-          "firebase_uid",
-          String(firebaseUid).trim()
-        )
-        .order(
-          "timestamp",
-          {
-            ascending: false,
-          }
-        )
-        .limit(50);
-
-
-      if (error) {
-        console.error(
-          "Conversion history query error:",
-          error
-        );
-
-        return res.status(500).json({
-          success: false,
-          error:
-            "Unable to load conversion history.",
-        });
-      }
+  data,
+  error,
+} = await supabase
+  .from("conversion_history")
+  .select(
+    "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
+  )
+  .eq(
+    "firebase_uid",
+    String(firebaseUid).trim()
+  )
+  .order(
+    "timestamp",
+    {
+      ascending: false,
+    }
+  )
+  .limit(50);
 
 
       /* ========================================================
@@ -2093,8 +2027,8 @@ router.patch(
           String(firebaseUid).trim()
         )
         .select(
-          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, status, is_favorite, content"
-        );
+  "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
+);
 
 
       if (error) {
