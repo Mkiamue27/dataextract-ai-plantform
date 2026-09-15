@@ -402,8 +402,10 @@ function parseFinancialExtraction(
 
   return {
     documentType,
+
     rows:
       parsed.rows,
+
     schema,
   };
 }
@@ -420,7 +422,6 @@ function financialJsonToCsv(
     parseFinancialExtraction(
       rawContent
     );
-
 
   const csv =
     structuredRowsToCsv(
@@ -542,6 +543,7 @@ async function recordSuccessfulUsage(
   }
 }
 
+
 /* ============================================================
    CONVERSION HISTORY
 ============================================================ */
@@ -628,6 +630,7 @@ async function recordConversionHistory({
     null
   );
 }
+
 
 /* ============================================================
    POST /extract
@@ -757,9 +760,8 @@ router.post(
           ?.processingMode
       )
     );
-
-
-    next();
+	
+	    next();
   },
 
 
@@ -778,8 +780,8 @@ router.post(
 
     next();
   },
-  
-    /* ============================================================
+
+  /* ============================================================
      EXTRACTION HANDLER
   ============================================================ */
 
@@ -1082,7 +1084,6 @@ router.post(
               adaptiveOutput
                 .documentType;
 
-
             schemaHeader =
               adaptiveOutput
                 .schema
@@ -1094,32 +1095,32 @@ router.post(
               documentType
             );
 
-
             console.log(
               "Schema column count:",
               schemaHeader.length
             );
 
-			/* ==================================================
-   BUILD FRIENDLY OUTPUT FILENAME FROM DETECTED TYPE
-================================================== */
 
-outputFileName =
-  buildFriendlyOutputFileName(
-    documentType,
-    processingMode,
-    fileIndex
-  );
+            /* ==================================================
+               BUILD FRIENDLY OUTPUT FILENAME FROM DETECTED TYPE
+            ================================================== */
 
-console.log(
-  "Detected document type:",
-  documentType
-);
+            outputFileName =
+              buildFriendlyOutputFileName(
+                documentType,
+                processingMode,
+                fileIndex
+              );
 
-console.log(
-  "Friendly output filename:",
-  outputFileName
-);
+            console.log(
+              "Detected document type:",
+              documentType
+            );
+
+            console.log(
+              "Friendly output filename:",
+              outputFileName
+            );
 
 
             /* ==================================================
@@ -1234,39 +1235,42 @@ console.log(
             );
           }
 
-		/* ====================================================
-   RECORD COMPLETED HISTORY
-==================================================== */
 
-let historyId = null;
+          /* ====================================================
+             RECORD COMPLETED HISTORY
+          ==================================================== */
 
-try {
-  historyId =
-    await recordConversionHistory({
-      firebaseUid:
-        firebaseUid.trim(),
+          let historyId = null;
 
-      inputFileName,
+          try {
 
-      outputFileName,
+            historyId =
+              await recordConversionHistory({
+                firebaseUid:
+                  firebaseUid.trim(),
 
-      processingMode,
+                inputFileName,
 
-      documentType,
+                outputFileName,
 
-      status:
-        "completed",
+                processingMode,
 
-      content:
-        finalContent,
-    });
+                documentType,
 
-} catch (historyError) {
-  console.error(
-    `Failed to record conversion history for "${inputFileName}":`,
-    historyError
-  );
-}
+                status:
+                  "completed",
+
+                content:
+                  finalContent,
+              });
+
+          } catch (historyError) {
+
+            console.error(
+              `Failed to record conversion history for "${inputFileName}":`,
+              historyError
+            );
+          }
 
 
           /* ====================================================
@@ -1347,83 +1351,90 @@ try {
             fileError
           );
 
-		/* ====================================================
-   RECORD FAILED HISTORY
-==================================================== */
 
-let failedHistoryId =
-  null;
+          /* ====================================================
+             RECORD FAILED HISTORY
+          ==================================================== */
 
-try {
+          let failedHistoryId =
+            null;
 
-  failedHistoryId =
-    await recordConversionHistory({
-      firebaseUid:
-        firebaseUid.trim(),
+          try {
 
-      inputFileName:
-        inputFileName,
+            failedHistoryId =
+              await recordConversionHistory({
+                firebaseUid:
+                  firebaseUid.trim(),
 
-      outputFileName:
-        outputFileName,
+                inputFileName:
+                  inputFileName,
 
-      processingMode:
-        processingMode,
+                outputFileName:
+                  outputFileName,
 
-      documentType:
-        typeof documentType !== "undefined"
-          ? documentType
-          : null,
+                processingMode:
+                  processingMode,
 
-      status:
-        "failed",
+                documentType:
+                  typeof documentType !== "undefined"
+                    ? documentType
+                    : null,
 
-      content:
-        "",
-    });
+                status:
+                  "failed",
 
-} catch (
-  historyError
-) {
+                content:
+                  "",
+              });
 
-  console.error(
-    `Failed to record failed conversion history for "${inputFileName}":`,
-    historyError
-  );
-}
+          } catch (
+            historyError
+          ) {
+
+            console.error(
+              `Failed to record failed conversion history for "${inputFileName}":`,
+              historyError
+            );
+          }
 
 
-/* ====================================================
-   FAILED RESULT
-==================================================== */
+          /* ====================================================
+             FAILED RESULT
+          ==================================================== */
 
-errors.push({
-  id:
-    failedHistoryId,
+          errors.push({
+            id:
+              failedHistoryId,
 
-  filename:
-    inputFileName,
+            filename:
+              inputFileName,
 
-  outputFileName,
+            outputFileName,
 
-  processingMode,
+            processingMode,
 
-  documentType:
-    typeof documentType !== "undefined"
-      ? documentType
-      : null,
+            documentType:
+              typeof documentType !== "undefined"
+                ? documentType
+                : null,
 
-  success:
-    false,
+            success:
+              false,
 
-  status:
-    "failed",
+            status:
+              "failed",
 
-  error:
-    fileError
-      ?.message ||
-    "Document extraction failed.",
-});
+            error:
+              fileError
+                ?.message ||
+              "Document extraction failed.",
+          });
+
+        } // closes catch (fileError)
+
+      } // closes for-loop
+
+
       /* ========================================================
          RECORD SUCCESSFUL USAGE
       ======================================================== */
@@ -1518,28 +1529,27 @@ errors.push({
         .status(200)
         .json({
           success:
-            true,
+		  
+		                true,
 
-          processingMode,
+            processingMode,
 
-          totalFiles:
-            req.files
-              .length,
+            totalFiles:
+              req.files.length,
 
-          successfulFiles:
-            results.length,
+            successfulFiles:
+              results.length,
 
-          failedFiles:
-            errors.length,
+            failedFiles:
+              errors.length,
 
-          partialSuccess:
-            errors.length >
-            0,
+            partialSuccess:
+              errors.length > 0,
 
-          results,
+            results,
 
-          errors,
-        });
+            errors,
+          });
 
 
     } catch (
@@ -1547,13 +1557,7 @@ errors.push({
     ) {
 
       console.error(
-        "=== EXTRACTION ROUTE ERROR ==="
-      );
-
-
-      console.error(
-        error
-          ?.message ||
+        "Extraction route error:",
         error
       );
 
@@ -1565,293 +1569,13 @@ errors.push({
             false,
 
           error:
-            error
-              ?.message ||
-            "Internal extraction error.",
+            error?.message ||
+            "Document extraction failed.",
         });
     }
   }
 );
 
-
-/* ============================================================
-   POST /extract/download-all-zip
-============================================================ */
-
-router.post(
-  "/download-all-zip",
-
-  async (req, res) => {
-    try {
-
-      const {
-        results,
-      } =
-        req.body || {};
-
-
-      if (
-        !Array.isArray(
-          results
-        ) ||
-        results.length === 0
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "No extraction results were provided.",
-          });
-      }
-
-
-      const successfulResults =
-        results.filter(
-          (item) => {
-
-            return (
-              item &&
-              item.success === true &&
-              typeof item.content ===
-                "string" &&
-              item.content
-                .trim()
-                .length > 0
-            );
-          }
-        );
-
-
-      if (
-        successfulResults.length ===
-        0
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "No successful files are available for ZIP download.",
-          });
-      }
-
-
-      const zipFileName =
-        `DataExtractAI_Results_${Date.now()}.zip`;
-
-
-      res.setHeader(
-        "Content-Type",
-        "application/zip"
-      );
-
-
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${zipFileName}"`
-      );
-
-
-      const archive =
-        archiver(
-          "zip",
-          {
-            zlib: {
-              level: 9,
-            },
-          }
-        );
-
-
-      archive.on(
-        "warning",
-        (error) => {
-
-          console.warn(
-            "ZIP warning:",
-            error
-          );
-        }
-      );
-
-
-      archive.on(
-        "error",
-        (error) => {
-
-          console.error(
-            "ZIP creation error:",
-            error
-          );
-
-
-          if (
-            !res.headersSent
-          ) {
-
-            return res
-              .status(500)
-              .json({
-                success:
-                  false,
-
-                error:
-                  "Unable to create ZIP file.",
-              });
-          }
-
-
-          res.destroy(
-            error
-          );
-        }
-      );
-
-
-      archive.pipe(
-        res
-      );
-
-
-      const usedNames =
-        new Set();
-
-
-      for (
-        let index = 0;
-        index <
-          successfulResults.length;
-        index++
-      ) {
-
-        const item =
-          successfulResults[index];
-
-
-        let outputFileName =
-          typeof item.outputFileName ===
-            "string" &&
-          item.outputFileName
-            .trim()
-            .length > 0
-            ? item.outputFileName
-                .trim()
-            : `extraction_${index + 1}.csv`;
-
-
-        outputFileName =
-          outputFileName.replace(
-            /[\\/:*?"<>|]/g,
-            "_"
-          );
-
-
-        let uniqueFileName =
-          outputFileName;
-
-
-        if (
-          usedNames.has(
-            uniqueFileName
-          )
-        ) {
-
-          const dotIndex =
-            uniqueFileName
-              .lastIndexOf(".");
-
-
-          if (
-            dotIndex > 0
-          ) {
-
-            const base =
-              uniqueFileName
-                .substring(
-                  0,
-                  dotIndex
-                );
-
-
-            const extension =
-              uniqueFileName
-                .substring(
-                  dotIndex
-                );
-
-
-            uniqueFileName =
-              `${base}_${index + 1}${extension}`;
-
-          } else {
-
-            uniqueFileName =
-              `${uniqueFileName}_${index + 1}`;
-          }
-        }
-
-
-        usedNames.add(
-          uniqueFileName
-        );
-
-
-        archive.append(
-          item.content,
-          {
-            name:
-              uniqueFileName,
-          }
-        );
-      }
-
-
-      console.log(
-        `ZIP download prepared with ${successfulResults.length} file(s).`
-      );
-
-
-      await archive.finalize();
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "Download-all ZIP error:",
-        error
-      );
-
-
-      if (
-        !res.headersSent
-      ) {
-
-        return res
-          .status(500)
-          .json({
-            success:
-              false,
-
-            error:
-              error
-                ?.message ||
-              "Unable to create ZIP file.",
-          });
-      }
-
-
-      res.end();
-    }
-  }
-);
 
 /* ============================================================
    GET /extract/conversion-history
@@ -1861,24 +1585,33 @@ router.get(
   "/conversion-history",
 
   async (req, res) => {
+
     try {
+
       const firebaseUid =
         req.query.firebase_uid;
 
 
       /* ========================================================
-         VALIDATE REQUEST
+         VALIDATE USER
       ======================================================== */
 
       if (
         !firebaseUid ||
-        String(firebaseUid).trim().length === 0
+        String(firebaseUid)
+          .trim()
+          .length === 0
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing firebase_uid.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "Missing firebase_uid.",
+          });
       }
 
 
@@ -1887,53 +1620,90 @@ router.get(
       ======================================================== */
 
       const {
-  data,
-  error,
-} = await supabase
-  .from("conversion_history")
-  .select(
-    "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
-  )
-  .eq(
-    "firebase_uid",
-    String(firebaseUid).trim()
-  )
-  .order(
-    "timestamp",
-    {
-      ascending: false,
-    }
-  )
-  .limit(50);
+        data,
+        error,
+      } = await supabase
+        .from(
+          "conversion_history"
+        )
+        .select(
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
+        )
+        .eq(
+          "firebase_uid",
+          String(firebaseUid)
+            .trim()
+        )
+        .order(
+          "timestamp",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(50);
+
+
+      if (error) {
+
+        console.error(
+          "Conversion history query error:",
+          error
+        );
+
+
+        return res
+          .status(500)
+          .json({
+            success:
+              false,
+
+            error:
+              "Unable to load conversion history.",
+          });
+      }
 
 
       /* ========================================================
          SUCCESS
       ======================================================== */
 
-      return res.status(200).json({
-        success: true,
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
 
-        count:
-          data?.length || 0,
+          count:
+            data?.length ||
+            0,
 
-        history:
-          data || [],
-      });
+          history:
+            data ||
+            [],
+        });
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
+
       console.error(
         "Conversion history route error:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        error:
-          error?.message ||
-          "Unable to load conversion history.",
-      });
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          error:
+            error?.message ||
+            "Unable to load conversion history.",
+        });
     }
   }
 );
@@ -1946,16 +1716,23 @@ router.get(
 router.patch(
   "/conversion-history/:id/favorite",
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
+
       const recordId =
         req.params.id;
 
       const firebaseUid =
-        req.body?.firebase_uid;
+        req.body
+          ?.firebase_uid;
 
       const isFavorite =
-        req.body?.is_favorite;
+        req.body
+          ?.is_favorite;
 
 
       /* ========================================================
@@ -1964,13 +1741,20 @@ router.patch(
 
       if (
         !recordId ||
-        String(recordId).trim().length === 0
+        String(recordId)
+          .trim()
+          .length === 0
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing conversion history record id.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "Missing conversion history record id.",
+          });
       }
 
 
@@ -1980,13 +1764,20 @@ router.patch(
 
       if (
         !firebaseUid ||
-        String(firebaseUid).trim().length === 0
+        String(firebaseUid)
+          .trim()
+          .length === 0
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing firebase_uid.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "Missing firebase_uid.",
+          });
       }
 
 
@@ -1995,13 +1786,19 @@ router.patch(
       ======================================================== */
 
       if (
-        typeof isFavorite !== "boolean"
+        typeof isFavorite !==
+        "boolean"
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "is_favorite must be true or false.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "is_favorite must be a boolean.",
+          });
       }
 
 
@@ -2013,35 +1810,45 @@ router.patch(
         data,
         error,
       } = await supabase
-        .from("conversion_history")
+        .from(
+          "conversion_history"
+        )
         .update({
           is_favorite:
             isFavorite,
         })
         .eq(
           "id",
-          String(recordId).trim()
+          String(recordId)
+            .trim()
         )
         .eq(
           "firebase_uid",
-          String(firebaseUid).trim()
+          String(firebaseUid)
+            .trim()
         )
         .select(
-  "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
-);
+          "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
+        );
 
 
       if (error) {
+
         console.error(
           "Favorite update error:",
           error
         );
 
-        return res.status(500).json({
-          success: false,
-          error:
-            "Unable to update favorite status.",
-        });
+
+        return res
+          .status(500)
+          .json({
+            success:
+              false,
+
+            error:
+              "Unable to update favorite status.",
+          });
       }
 
 
@@ -2053,11 +1860,16 @@ router.patch(
         !Array.isArray(data) ||
         data.length === 0
       ) {
-        return res.status(404).json({
-          success: false,
-          error:
-            "Conversion history record not found or does not belong to this user.",
-        });
+
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            error:
+              "Conversion history record not found or does not belong to this user.",
+          });
       }
 
 
@@ -2065,10 +1877,12 @@ router.patch(
         "Favorite status updated:",
         {
           recordId:
-            String(recordId).trim(),
+            String(recordId)
+              .trim(),
 
           firebaseUid:
-            String(firebaseUid).trim(),
+            String(firebaseUid)
+              .trim(),
 
           isFavorite,
         }
@@ -2079,26 +1893,37 @@ router.patch(
          SUCCESS
       ======================================================== */
 
-      return res.status(200).json({
-        success: true,
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
 
-        record:
-          data[0],
-      });
+          record:
+            data[0],
+        });
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
+
       console.error(
         "Favorite update route error:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        error:
-          error?.message ||
-          "Unable to update favorite status.",
-      });
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          error:
+            error?.message ||
+            "Unable to update favorite status.",
+        });
     }
   }
 );
@@ -2111,8 +1936,13 @@ router.patch(
 router.delete(
   "/conversion-history/:id",
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
+
       const recordId =
         req.params.id;
 
@@ -2126,25 +1956,39 @@ router.delete(
 
       if (
         !recordId ||
-        String(recordId).trim().length === 0
+        String(recordId)
+          .trim()
+          .length === 0
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing conversion history record id.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "Missing conversion history record id.",
+          });
       }
 
 
       if (
         !firebaseUid ||
-        String(firebaseUid).trim().length === 0
+        String(firebaseUid)
+          .trim()
+          .length === 0
       ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing firebase_uid.",
-        });
+
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            error:
+              "Missing firebase_uid.",
+          });
       }
 
 
@@ -2156,30 +2000,42 @@ router.delete(
         data,
         error,
       } = await supabase
-        .from("conversion_history")
+        .from(
+          "conversion_history"
+        )
         .delete()
         .eq(
           "id",
-          String(recordId).trim()
+          String(recordId)
+            .trim()
         )
         .eq(
           "firebase_uid",
-          String(firebaseUid).trim()
+          String(firebaseUid)
+            .trim()
         )
-        .select("id");
+        .select(
+          "id"
+        );
 
 
       if (error) {
+
         console.error(
           "Conversion history delete error:",
           error
         );
 
-        return res.status(500).json({
-          success: false,
-          error:
-            "Unable to delete conversion history.",
-        });
+
+        return res
+          .status(500)
+          .json({
+            success:
+              false,
+
+            error:
+              "Unable to delete conversion history.",
+          });
       }
 
 
@@ -2191,11 +2047,16 @@ router.delete(
         !Array.isArray(data) ||
         data.length === 0
       ) {
-        return res.status(404).json({
-          success: false,
-          error:
-            "Conversion history record not found or does not belong to this user.",
-        });
+
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            error:
+              "Conversion history record not found or does not belong to this user.",
+          });
       }
 
 
@@ -2209,26 +2070,37 @@ router.delete(
          SUCCESS
       ======================================================== */
 
-      return res.status(200).json({
-        success: true,
+      return res
+        .status(200)
+        .json({
+          success:
+            true,
 
-        deletedId:
-          recordId,
-      });
+          deletedId:
+            data[0].id,
+        });
 
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
+
       console.error(
         "Conversion history delete route error:",
         error
       );
 
-      return res.status(500).json({
-        success: false,
-        error:
-          error?.message ||
-          "Unable to delete conversion history.",
-      });
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          error:
+            error?.message ||
+            "Unable to delete conversion history.",
+        });
     }
   }
 );
