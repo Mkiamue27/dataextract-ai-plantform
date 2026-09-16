@@ -177,20 +177,20 @@ function buildFriendlyOutputFileName(
       "receipt";
 
   } else if (
-    normalized.includes("eob") ||
-    normalized.includes(
-      "explanation_of_benefits"
-    )
-  ) {
-    baseName =
-      "medical_eob";
+  normalized.includes("eob") ||
+  normalized.includes(
+    "explanation_of_benefits"
+  )
+) {
+  baseName =
+    "medical_eob";
 
-  } else if (
-    normalized.includes("medical")
-  ) {
-    baseName =
-      "medical_document";
-
+} else if (
+  normalized.includes("medical")
+) {
+  baseName =
+    "medical_document";
+	
   } else if (
     normalized.includes("contract")
   ) {
