@@ -1598,7 +1598,7 @@ router.post(
       );
 
       const files =
-        req.body?.files;
+  req.body?.results;
 
       console.log(
         "ZIP files received:",
