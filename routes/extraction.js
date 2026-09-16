@@ -186,17 +186,22 @@ function buildFriendlyOutputFileName(
     "medical_eob";
 
 } else if (
+  normalized.includes("medical_bill")
+) {
+  baseName =
+    "medical_bill";
+
+} else if (
   normalized.includes("medical")
 ) {
   baseName =
     "medical_document";
-	
-  } else if (
-    normalized.includes("contract")
-  ) {
-    baseName =
-      "contract";
 
+} else if (
+  normalized.includes("contract")
+) {
+  baseName =
+    "contract";
   } else if (
     normalized.includes("resume") ||
     normalized.includes("cv")
