@@ -1576,6 +1576,222 @@ router.post(
   }
 );
 
+/* ============================================================
+   POST /extract/download-all-zip
+============================================================ */
+
+router.post(
+  "/download-all-zip",
+
+  express.json({
+    limit: "50mb",
+  }),
+
+  async (req, res) => {
+    try {
+      console.log(
+        "========================================"
+      );
+
+      console.log(
+        "=== DOWNLOAD ALL ZIP ROUTE HIT ==="
+      );
+
+      const files =
+        req.body?.files;
+
+      console.log(
+        "ZIP files received:",
+        Array.isArray(files)
+          ? files.length
+          : 0
+      );
+
+      /* ======================================================
+         VALIDATE FILES
+      ====================================================== */
+
+      if (
+        !Array.isArray(files) ||
+        files.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "No files supplied for ZIP download.",
+          });
+      }
+
+      /* ======================================================
+         KEEP ONLY VALID FILES
+      ====================================================== */
+
+      const validFiles =
+        files.filter(
+          (file) =>
+            file &&
+            typeof file.content ===
+              "string" &&
+            file.content.length > 0
+        );
+
+      if (
+        validFiles.length === 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error:
+              "No valid file content supplied for ZIP download.",
+          });
+      }
+
+      console.log(
+        "Valid ZIP files:",
+        validFiles.length
+      );
+
+      /* ======================================================
+         RESPONSE HEADERS
+      ====================================================== */
+
+      const zipFileName =
+        `dataextract_${Date.now()}.zip`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/zip"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${zipFileName}"`
+      );
+
+      /* ======================================================
+         CREATE ZIP
+      ====================================================== */
+
+      const archive =
+        archiver(
+          "zip",
+          {
+            zlib: {
+              level: 9,
+            },
+          }
+        );
+
+      archive.on(
+        "warning",
+        (warning) => {
+          console.warn(
+            "ZIP warning:",
+            warning
+          );
+        }
+      );
+
+      archive.on(
+        "error",
+        (error) => {
+          console.error(
+            "ZIP archive error:",
+            error
+          );
+
+          if (
+            !res.headersSent
+          ) {
+            res
+              .status(500)
+              .json({
+                success: false,
+                error:
+                  "Unable to create ZIP file.",
+              });
+          } else {
+            res.destroy(
+              error
+            );
+          }
+        }
+      );
+
+      archive.pipe(res);
+
+      /* ======================================================
+         ADD FILES TO ZIP
+      ====================================================== */
+
+      validFiles.forEach(
+        (file, index) => {
+          const filename =
+            String(
+              file.outputFileName ||
+              file.filename ||
+              `extracted_file_${index + 1}.csv`
+            )
+              .replace(
+                /[\/\\]/g,
+                "_"
+              );
+
+          console.log(
+            "Adding to ZIP:",
+            filename
+          );
+
+          archive.append(
+            file.content,
+            {
+              name:
+                filename,
+            }
+          );
+        }
+      );
+
+      /* ======================================================
+         FINALIZE ZIP
+      ====================================================== */
+
+      await archive.finalize();
+
+      console.log(
+        "=== ZIP FINALIZED ==="
+      );
+
+      console.log(
+        "========================================"
+      );
+
+    } catch (error) {
+      console.error(
+        "Download All ZIP route error:",
+        error
+      );
+
+      if (
+        !res.headersSent
+      ) {
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error:
+              error?.message ||
+              "Unable to create ZIP download.",
+          });
+      }
+
+      res.end();
+    }
+  }
+);
 
 /* ============================================================
    GET /extract/conversion-history
