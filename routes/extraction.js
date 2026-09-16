@@ -328,10 +328,33 @@ function parseFinancialExtraction(
   }
 
 
+  /* ==========================================================
+     DOCUMENT TYPE DIAGNOSTICS
+  ========================================================== */
+
+  console.log(
+    "RAW parsed.documentType:",
+    parsed.documentType
+  );
+
+  console.log(
+    "RAW parsed top-level keys:",
+    Object.keys(
+      parsed
+    )
+  );
+
+
   const documentType =
     normalizeDocumentType(
       parsed.documentType
     );
+
+
+  console.log(
+    "NORMALIZED documentType:",
+    documentType
+  );
 
 
   if (
@@ -760,8 +783,8 @@ router.post(
           ?.processingMode
       )
     );
-	
-	    next();
+
+    next();
   },
 
 
@@ -780,8 +803,8 @@ router.post(
 
     next();
   },
-
-  /* ============================================================
+  
+    /* ============================================================
      EXTRACTION HANDLER
   ============================================================ */
 
@@ -1529,27 +1552,26 @@ router.post(
         .status(200)
         .json({
           success:
-		  
-		                true,
+            true,
 
-            processingMode,
+          processingMode,
 
-            totalFiles:
-              req.files.length,
+          totalFiles:
+            req.files.length,
 
-            successfulFiles:
-              results.length,
+          successfulFiles:
+            results.length,
 
-            failedFiles:
-              errors.length,
+          failedFiles:
+            errors.length,
 
-            partialSuccess:
-              errors.length > 0,
+          partialSuccess:
+            errors.length > 0,
 
-            results,
+          results,
 
-            errors,
-          });
+          errors,
+        });
 
 
     } catch (
@@ -1576,6 +1598,7 @@ router.post(
   }
 );
 
+
 /* ============================================================
    POST /extract/download-all-zip
 ============================================================ */
@@ -1589,6 +1612,7 @@ router.post(
 
   async (req, res) => {
     try {
+
       console.log(
         "========================================"
       );
@@ -1597,8 +1621,22 @@ router.post(
         "=== DOWNLOAD ALL ZIP ROUTE HIT ==="
       );
 
+
+      /*
+       * IMPORTANT:
+       *
+       * FlutterFlow downloadAllCsvAsZip sends:
+       *
+       * {
+       *   "results": [...]
+       * }
+       *
+       * Therefore this route must read req.body.results.
+       */
+
       const files =
-  req.body?.results;
+        req.body?.results;
+
 
       console.log(
         "ZIP files received:",
@@ -1606,6 +1644,7 @@ router.post(
           ? files.length
           : 0
       );
+
 
       /* ======================================================
          VALIDATE FILES
@@ -1615,14 +1654,17 @@ router.post(
         !Array.isArray(files) ||
         files.length === 0
       ) {
+
         return res
           .status(400)
           .json({
             success: false,
+
             error:
               "No files supplied for ZIP download.",
           });
       }
+
 
       /* ======================================================
          KEEP ONLY VALID FILES
@@ -1637,22 +1679,27 @@ router.post(
             file.content.length > 0
         );
 
+
       if (
         validFiles.length === 0
       ) {
+
         return res
           .status(400)
           .json({
             success: false,
+
             error:
               "No valid file content supplied for ZIP download.",
           });
       }
 
+
       console.log(
         "Valid ZIP files:",
         validFiles.length
       );
+
 
       /* ======================================================
          RESPONSE HEADERS
@@ -1661,15 +1708,18 @@ router.post(
       const zipFileName =
         `dataextract_${Date.now()}.zip`;
 
+
       res.setHeader(
         "Content-Type",
         "application/zip"
       );
 
+
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${zipFileName}"`
       );
+
 
       /* ======================================================
          CREATE ZIP
@@ -1685,9 +1735,11 @@ router.post(
           }
         );
 
+
       archive.on(
         "warning",
         (warning) => {
+
           console.warn(
             "ZIP warning:",
             warning
@@ -1695,25 +1747,32 @@ router.post(
         }
       );
 
+
       archive.on(
         "error",
         (error) => {
+
           console.error(
             "ZIP archive error:",
             error
           );
 
+
           if (
             !res.headersSent
           ) {
+
             res
               .status(500)
               .json({
                 success: false,
+
                 error:
                   "Unable to create ZIP file.",
               });
+
           } else {
+
             res.destroy(
               error
             );
@@ -1721,7 +1780,9 @@ router.post(
         }
       );
 
+
       archive.pipe(res);
+
 
       /* ======================================================
          ADD FILES TO ZIP
@@ -1729,6 +1790,7 @@ router.post(
 
       validFiles.forEach(
         (file, index) => {
+
           const filename =
             String(
               file.outputFileName ||
@@ -1740,10 +1802,12 @@ router.post(
                 "_"
               );
 
+
           console.log(
             "Adding to ZIP:",
             filename
           );
+
 
           archive.append(
             file.content,
@@ -1755,38 +1819,47 @@ router.post(
         }
       );
 
+
       /* ======================================================
          FINALIZE ZIP
       ====================================================== */
 
       await archive.finalize();
 
+
       console.log(
         "=== ZIP FINALIZED ==="
       );
+
 
       console.log(
         "========================================"
       );
 
+
     } catch (error) {
+
       console.error(
         "Download All ZIP route error:",
         error
       );
 
+
       if (
         !res.headersSent
       ) {
+
         return res
           .status(500)
           .json({
             success: false,
+
             error:
               error?.message ||
               "Unable to create ZIP download.",
           });
       }
+
 
       res.end();
     }
