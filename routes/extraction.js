@@ -176,7 +176,7 @@ function buildFriendlyOutputFileName(
     baseName =
       "receipt";
 
-  } else if (
+} else if (
   normalized.includes("eob") ||
   normalized.includes(
     "explanation_of_benefits"
@@ -202,6 +202,7 @@ function buildFriendlyOutputFileName(
 ) {
   baseName =
     "contract";
+
   } else if (
     normalized.includes("resume") ||
     normalized.includes("cv")
@@ -2399,6 +2400,161 @@ router.delete(
   }
 );
 
+/* ============================================================
+   DELETE DATAEXTRACT ACCOUNT DATA
+   DELETE /extract/delete
+============================================================ */
+
+router.delete(
+  "/delete",
+  async (req, res) => {
+    try {
+      const firebaseUid =
+        req.body?.firebase_uid;
+
+      /* ========================================================
+         VALIDATE USER
+      ======================================================== */
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "Missing firebase_uid.",
+          });
+      }
+
+      const uid =
+        String(firebaseUid).trim();
+
+      console.log(
+        "=== DATAEXTRACT ACCOUNT DELETE REQUEST ==="
+      );
+
+      console.log(
+        "Firebase UID supplied:",
+        Boolean(uid)
+      );
+
+
+      /* ========================================================
+         DELETE CONVERSION HISTORY
+      ======================================================== */
+
+      const {
+        error: historyError,
+      } = await supabase
+        .from("conversion_history")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (historyError) {
+        console.error(
+          "Account delete - conversion_history error:",
+          historyError
+        );
+
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error:
+              "Unable to delete conversion history.",
+          });
+      }
+
+
+      /* ========================================================
+         DELETE USAGE
+      ======================================================== */
+
+      const {
+        error: usageError,
+      } = await supabase
+        .from("usage")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (usageError) {
+        console.error(
+          "Account delete - usage error:",
+          usageError
+        );
+
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error:
+              "Unable to delete usage data.",
+          });
+      }
+
+
+      /* ========================================================
+         DELETE SUBSCRIPTION RECORD
+      ======================================================== */
+
+      const {
+        error: subscriptionError,
+      } = await supabase
+        .from("subscriptions")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (subscriptionError) {
+        console.error(
+          "Account delete - subscriptions error:",
+          subscriptionError
+        );
+
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error:
+              "Unable to delete subscription data.",
+          });
+      }
+
+
+      /* ========================================================
+         SUCCESS
+      ======================================================== */
+
+      console.log(
+        "DataExtract account data deleted successfully."
+      );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message:
+            "DataExtract account data deleted successfully.",
+        });
+
+    } catch (error) {
+      console.error(
+        "Account delete route error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error?.message ||
+            "Unable to delete account data.",
+        });
+    }
+  }
+);
 
 /* ============================================================
    EXPORT ROUTER
