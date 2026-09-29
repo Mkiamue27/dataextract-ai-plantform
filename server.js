@@ -680,6 +680,265 @@ app.post(
 );
 
 /* ============================================================
+   DELETE ACCOUNT - STRIPE CLEANUP
+============================================================ */
+
+app.delete(
+  "/account/delete",
+
+  async (req, res) => {
+    try {
+      const firebaseUid =
+        req.body?.firebase_uid;
+
+      /* ========================================================
+         VALIDATE USER
+      ======================================================== */
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "firebase_uid is required.",
+        });
+      }
+
+      const uid =
+        String(firebaseUid).trim();
+
+      console.log(
+        "=== DATAEXTRACT ACCOUNT DELETE START ==="
+      );
+
+      /* ========================================================
+         GET ALL STRIPE SUBSCRIPTION RECORDS
+      ======================================================== */
+
+      const {
+        data: subscriptions,
+        error: subscriptionError,
+      } = await supabase
+        .from("subscriptions")
+        .select(
+          "stripe_subscription_id, stripe_customer_id, status, created_at"
+        )
+        .eq("firebase_uid", uid);
+
+      if (subscriptionError) {
+        console.error(
+          "Account delete subscription lookup error:",
+          subscriptionError
+        );
+
+        return res.status(500).json({
+          success: false,
+          error:
+            "Unable to retrieve subscription information.",
+        });
+      }
+
+      /* ========================================================
+         BUILD UNIQUE STRIPE SUBSCRIPTION ID LIST
+      ======================================================== */
+
+      const subscriptionIds = [
+        ...new Set(
+          (subscriptions || [])
+            .map(
+              (record) =>
+                record.stripe_subscription_id
+            )
+            .filter(
+              (subscriptionId) =>
+                subscriptionId &&
+                String(subscriptionId)
+                  .trim()
+                  .length > 0
+            )
+        ),
+      ];
+
+      console.log(
+        "Stripe subscriptions found:",
+        subscriptionIds.length
+      );
+
+      /* ========================================================
+         CANCEL ALL EXISTING STRIPE SUBSCRIPTIONS
+      ======================================================== */
+
+      for (
+        const subscriptionId
+        of subscriptionIds
+      ) {
+        try {
+          const stripeSubscription =
+            await stripe.subscriptions.retrieve(
+              subscriptionId
+            );
+
+          if (
+            stripeSubscription.status !==
+            "canceled"
+          ) {
+            await stripe.subscriptions.cancel(
+              subscriptionId
+            );
+
+            console.log(
+              "Stripe subscription canceled:",
+              subscriptionId
+            );
+          } else {
+            console.log(
+              "Stripe subscription already canceled:",
+              subscriptionId
+            );
+          }
+        } catch (stripeError) {
+          /*
+           * If the subscription has already been removed
+           * from Stripe, continue with account deletion.
+           */
+          if (
+            stripeError?.code ===
+            "resource_missing"
+          ) {
+            console.log(
+              "Stripe subscription no longer exists; continuing:",
+              subscriptionId
+            );
+
+            continue;
+          }
+
+          console.error(
+            "Stripe cancellation error:",
+            subscriptionId,
+            stripeError
+          );
+
+          return res.status(500).json({
+            success: false,
+            error:
+              "Unable to cancel one or more Stripe subscriptions.",
+          });
+        }
+      }
+
+      /* ========================================================
+         DELETE CONVERSION HISTORY
+      ======================================================== */
+
+      const {
+        error: historyError,
+      } = await supabase
+        .from("conversion_history")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (historyError) {
+        console.error(
+          "Account delete conversion_history error:",
+          historyError
+        );
+
+        throw historyError;
+      }
+
+      /* ========================================================
+         DELETE USAGE DATA
+      ======================================================== */
+
+      const {
+        error: usageError,
+      } = await supabase
+        .from("usage")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (usageError) {
+        console.error(
+          "Account delete usage error:",
+          usageError
+        );
+
+        throw usageError;
+      }
+
+      /* ========================================================
+         DELETE FEEDBACK
+      ======================================================== */
+
+      const {
+        error: feedbackError,
+      } = await supabase
+        .from("feedback")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (feedbackError) {
+        console.error(
+          "Account delete feedback error:",
+          feedbackError
+        );
+
+        throw feedbackError;
+      }
+
+      /* ========================================================
+         DELETE SUBSCRIPTION RECORDS
+      ======================================================== */
+
+      const {
+        error: deleteSubscriptionError,
+      } = await supabase
+        .from("subscriptions")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (deleteSubscriptionError) {
+        console.error(
+          "Account delete subscriptions error:",
+          deleteSubscriptionError
+        );
+
+        throw deleteSubscriptionError;
+      }
+
+      /* ========================================================
+         SUCCESS
+      ======================================================== */
+
+      console.log(
+        "=== DATAEXTRACT ACCOUNT DELETE COMPLETE ==="
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "DataExtract AI account data deleted successfully.",
+      });
+
+    } catch (error) {
+      console.error(
+        "Account delete error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          "Unable to delete account data.",
+      });
+    }
+  }
+);
+
+/* ============================================================
    SUBMIT USER FEEDBACK
 ============================================================ */
 
