@@ -2494,6 +2494,31 @@ router.delete(
           });
       }
 
+            /* ========================================================
+         DELETE FEEDBACK
+      ======================================================== */
+
+      const {
+        error: feedbackError,
+      } = await supabase
+        .from("feedback")
+        .delete()
+        .eq("firebase_uid", uid);
+
+      if (feedbackError) {
+        console.error(
+          "Account delete - feedback error:",
+          feedbackError
+        );
+
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error:
+              "Unable to delete feedback data.",
+          });
+      }
 
       /* ========================================================
          DELETE SUBSCRIPTION RECORD
