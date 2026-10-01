@@ -680,6 +680,107 @@ app.post(
 );
 
 /* ============================================================
+   CREATE STRIPE CUSTOMER PORTAL SESSION
+============================================================ */
+
+app.post(
+  "/create-customer-portal-session",
+
+  async (req, res) => {
+    const {
+      userId,
+      returnUrl,
+    } = req.body;
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "userId is required.",
+        });
+    }
+
+    try {
+      /*
+       * Find the user's Stripe customer ID
+       * from the subscriptions table.
+       */
+      const {
+        data: subscription,
+        error: subscriptionError,
+      } = await supabase
+        .from("subscriptions")
+        .select(
+          "stripe_customer_id, created_at"
+        )
+        .eq("firebase_uid", userId)
+        .not(
+          "stripe_customer_id",
+          "is",
+          null
+        )
+        .order(
+          "created_at",
+          { ascending: false }
+        )
+        .limit(1)
+        .maybeSingle();
+
+      if (subscriptionError) {
+        throw subscriptionError;
+      }
+
+      if (
+        !subscription ||
+        !subscription.stripe_customer_id
+      ) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            error:
+              "No Stripe customer found for this user.",
+          });
+      }
+
+      /*
+       * Create Stripe Billing Portal session.
+       */
+      const portalSession =
+        await stripe.billingPortal.sessions.create({
+          customer:
+            subscription.stripe_customer_id,
+
+          return_url:
+            returnUrl ||
+            "https://yourapp.com/account",
+        });
+
+      return res.status(200).json({
+        success: true,
+        url: portalSession.url,
+      });
+
+    } catch (error) {
+      console.error(
+        "Customer portal session error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error?.message ||
+            "Unable to create customer portal session.",
+        });
+    }
+  }
+);
+
+/* ============================================================
    DELETE ACCOUNT - STRIPE CLEANUP
 ============================================================ */
 
