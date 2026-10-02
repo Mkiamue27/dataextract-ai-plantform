@@ -88,6 +88,15 @@ console.log("PRO match:", priceId === process.env.PRO_PRICE_ID);
     planName
   );
 
+  console.log(
+  "Subscription current_period_end:",
+  subscription.current_period_end
+);
+
+console.log(
+  "Subscription item current_period_end:",
+  subscription.items?.data?.[0]?.current_period_end
+);
 
   const payload = {
     firebase_uid: userId,
