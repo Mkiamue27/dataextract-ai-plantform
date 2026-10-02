@@ -57,10 +57,11 @@ async function upsertSubscription(
     subscription.items?.data?.[0]
       ?.price?.id || null;
 
+
 console.log("PRO env:", JSON.stringify(process.env.PRO_PRICE_ID));
 console.log("PRICE received:", JSON.stringify(priceId));
 console.log("PRO match:", priceId === process.env.PRO_PRICE_ID);
-  
+
   const planName =
     priceId ===
     process.env.STARTER_PRICE_ID
@@ -418,10 +419,15 @@ app.get(
             "plan_name, status, current_period_end, cancel_at_period_end"
           )
           .eq(
-            "firebase_uid",
-            uid
-          )
-          .maybeSingle();
+  "firebase_uid",
+  uid
+)
+.order(
+  "created_at",
+  { ascending: false }
+)
+.limit(1)
+.maybeSingle();
 
 
       if (error) {
