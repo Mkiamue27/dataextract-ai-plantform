@@ -1373,7 +1373,7 @@ module.exports = {
   validateMonetaryFields,
 
   /* Temporary legacy exports */
-  EXPECTED_COLUMNS,
-  HEADER,
-  MONETARY_COLUMNS,
+EXPECTED_COLUMNS,
+HEADER,
+MONETARY_COLUMNS,
 };
