@@ -1,6 +1,22 @@
+# Environment variables
 .env
+.env.*
+!.env.example
+
+# Dependencies
 node_modules/
+
+# Logs
 npm-debug.log*
+
+# Operating system files
 .DS_Store
 Thumbs.db
+
+# Backup files
 server.backup.js
+
+# Firebase Admin credentials
+serviceAccountKey.json
+*service-account*.json
+*firebase-adminsdk*.json
