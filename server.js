@@ -8,25 +8,44 @@ require("dotenv").config();
 /* ============================================================
    FIREBASE ADMIN SDK INITIALIZATION
 ============================================================ */
-
-const admin = require("firebase-admin");
 const fs = require("fs");
+
+const {
+  initializeApp,
+  cert,
+  getApps
+} = require("firebase-admin/app");
 
 const firebaseServiceAccountPath =
   "/etc/secrets/firebase-service-account.json";
 
 if (fs.existsSync(firebaseServiceAccountPath)) {
-  admin.initializeApp({
-    credential: admin.credential.cert(
-      JSON.parse(
-        fs.readFileSync(firebaseServiceAccountPath, "utf8")
-      )
-    ),
-  });
 
-  console.log("Firebase Admin SDK initialized successfully.");
+  if (getApps().length === 0) {
+
+    initializeApp({
+      credential: cert(
+        JSON.parse(
+          fs.readFileSync(
+            firebaseServiceAccountPath,
+            "utf8"
+          )
+        )
+      )
+    });
+
+  }
+
+  console.log(
+    "Firebase Admin SDK initialized successfully."
+  );
+
 } else {
-  console.error("Firebase service account file not found.");
+
+  console.error(
+    "Firebase service account file not found."
+  );
+
 }
 
 const extractionRoutes = require("./routes/extraction");
