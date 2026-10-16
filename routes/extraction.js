@@ -32,6 +32,7 @@ const router = express.Router();
 
 const archiver = require("archiver");
 
+const { getAuth } = require("firebase-admin/auth");
 
 /* ============================================================
    SUPABASE
