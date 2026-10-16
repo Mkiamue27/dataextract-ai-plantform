@@ -718,8 +718,9 @@ async function recordConversionHistory({
 ============================================================ */
 
 router.post(
-
   "/",
+
+  requireFirebaseAuth,
 
   (
     req,
