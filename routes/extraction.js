@@ -1928,7 +1928,7 @@ router.post(
    GET /extract/conversion-history
 ============================================================ */
 
-router.get(
+router.post(
   "/conversion-history",
 
   async (req, res) => {
