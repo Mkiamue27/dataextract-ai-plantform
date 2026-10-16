@@ -1931,12 +1931,13 @@ router.post(
 router.get(
   "/conversion-history",
 
-  async (req, res) => {
+  requireFirebaseAuth,
 
+  async (req, res) => {
     try {
 
       const firebaseUid =
-        req.query.firebase_uid;
+        req.firebaseUser.uid;
 
 
       /* ========================================================
