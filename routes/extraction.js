@@ -1664,13 +1664,14 @@ router.post(
 router.post(
   "/download-all-zip",
 
+  requireFirebaseAuth,
+
   express.json({
     limit: "50mb",
   }),
 
   async (req, res) => {
     try {
-
       console.log(
         "========================================"
       );
