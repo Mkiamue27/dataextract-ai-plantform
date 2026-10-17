@@ -3,6 +3,8 @@ const cors = require("cors");
 const Stripe = require("stripe");
 const { createClient } = require("@supabase/supabase-js");
 
+const requireFirebaseAuth = require("./middleware/requireFirebaseAuth");
+
 require("dotenv").config();
 
 /* ============================================================
