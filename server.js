@@ -549,16 +549,20 @@ app.get(
 app.get(
   "/usage-status",
 
+  requireFirebaseAuth,
+
   async (req, res) => {
-    const { uid } = req.query;
+
+    // Use the UID verified by Firebase authentication.
+    // Never trust a UID supplied through the query string.
+    const uid = req.firebaseUser.uid;
 
     if (!uid) {
-      return res.status(400).json({
+      return res.status(401).json({
         allowed: false,
-        error: "uid is required.",
+        error: "Authenticated Firebase user required.",
       });
     }
-
     try {
       // Get subscription
       const {
