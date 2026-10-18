@@ -626,16 +626,67 @@ const limit =
           ? null
           : Math.max(limit - used, 0);
 
-      const allowed =
-        limit == null || used < limit;
+      /* ============================================================
+   CHECK MONTHLY USAGE AVAILABILITY
+============================================================ */
 
-      return res.json({
-        allowed,
-        plan,
-        used,
-        limit,
-        remaining,
-      });
+const allowed =
+  limit == null || used < limit;
+
+
+/* ============================================================
+   GENERATE SUBSCRIPTION-SPECIFIC MESSAGE
+============================================================ */
+
+const planDisplayName =
+  String(plan || "free")
+    .charAt(0)
+    .toUpperCase() +
+  String(plan || "free").slice(1);
+
+let message = "";
+
+if (allowed) {
+
+  if (limit === null) {
+
+    message =
+      `Your ${planDisplayName} plan includes unlimited ` +
+      `monthly conversions. You can continue uploading documents.`;
+
+  } else {
+
+    message =
+      `You are currently using the ${planDisplayName} plan. ` +
+      `You have used ${used} of ${limit} monthly conversions. ` +
+      `You have ${remaining} conversions remaining.`;
+
+  }
+
+} else {
+
+  message =
+    `You have reached your ${planDisplayName} plan's ` +
+    `monthly limit of ${limit} conversions. ` +
+    `You have used ${used} conversions. ` +
+    `Please upgrade your subscription or wait until ` +
+    `your monthly allowance resets.`;
+
+}
+
+
+/* ============================================================
+   RETURN COMPLETE USAGE STATUS
+============================================================ */
+
+return res.status(200).json({
+  allowed,
+  plan,
+  used,
+  limit,
+  remaining,
+  message,
+});
 
     } catch (error) {
       console.error(
