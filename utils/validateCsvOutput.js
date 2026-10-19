@@ -327,36 +327,40 @@ function normalizeDocumentType(documentType) {
    GET FINANCIAL SCHEMA
 ============================================================ */
 
-function getFinancialSchema(
-  documentType
-) {
+function getFinancialSchema(documentType) {
+
+  // Normalize the document classification.
   const normalizedType =
-    normalizeDocumentType(
-      documentType
+    normalizeDocumentType(documentType);
+
+  // Reject unsupported document classifications.
+  if (normalizedType === "unsupported_document") {
+    throw new Error(
+      "Unsupported document type. No financial schema available."
     );
+  }
 
-  const schema =
-    FINANCIAL_SCHEMAS[
-      normalizedType
-    ] ||
-    FINANCIAL_SCHEMAS
-      .generic_financial;
+  // Retrieve the matching financial schema.
+  const schema = FINANCIAL_SCHEMAS[normalizedType];
 
+  // Prevent unknown classifications from using a fallback schema.
+  if (!schema) {
+    throw new Error(
+      `No financial schema found for document type: ${normalizedType}`
+    );
+  }
+
+  // Preserve the existing schema response structure.
   return {
-    documentType:
-      schema.documentType,
+    documentType: schema.documentType,
 
-    header:
-      [...schema.header],
+    header: [...schema.header],
 
-    monetaryColumns:
-      [...schema.monetaryColumns],
+    monetaryColumns: [...schema.monetaryColumns],
 
-    expectedColumns:
-      schema.header.length,
+    expectedColumns: schema.header.length,
   };
 }
-
 
 /* ============================================================
    CSV PARSER
