@@ -1425,15 +1425,15 @@ router.post(
           );
 
 
-        } catch (
-          fileError
-        ) {
+                } catch (fileError) {
+
+          /* ====================================================
+             FILE EXTRACTION ERROR HANDLER
+          ==================================================== */
 
           console.error(
             `Extraction failed for "${inputFileName}":`,
-            fileError
-              ?.message ||
-            fileError
+            fileError?.message || fileError
           );
 
 
