@@ -1259,16 +1259,20 @@ router.post(
                 .cleanedCsv;
 
 
-            if (
-              !validation.valid
-            ) {
+            if (!validation.valid) {
+  console.error(
+    `CSV validation failed for "${inputFileName}":`,
+    validation.errors
+  );
 
-              console.warn(
-                `CSV validation issues for "${inputFileName}":`,
-                validation.errors
-              );
-            }
-          }
+  throw new Error(
+    `CSV validation failed: ${
+      Array.isArray(validation.errors)
+        ? validation.errors.join("; ")
+        : "Invalid or empty extraction result."
+    }`
+  );
+}
 
 
           /* ====================================================
