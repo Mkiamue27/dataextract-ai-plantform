@@ -1312,7 +1312,33 @@ function validateCsv(
     }
   );
 
+  /* ============================================================
+     VALIDATE EXTRACTED DATA ROWS
+  ============================================================ */
 
+  // Reject CSV output containing only column headers.
+  if (rows.length === 0) {
+    errors.push(
+      "Extraction failed: No data rows were extracted."
+    );
+  }
+
+  // Check whether at least one row contains actual data.
+  const hasMeaningfulData = rows.some(
+    (row) =>
+      Array.isArray(row) &&
+      row.some(
+        (value) =>
+          String(value ?? "").trim().length > 0
+      )
+  );
+
+  if (rows.length > 0 && !hasMeaningfulData) {
+    errors.push(
+      "Extraction failed: All extracted data rows are empty."
+    );
+  }
+   
   /* ============================================================
      BUILD CLEAN CSV
   ============================================================ */
