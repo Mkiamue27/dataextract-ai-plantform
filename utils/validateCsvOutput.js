@@ -290,34 +290,38 @@ const SUPPORTED_FINANCIAL_DOCUMENT_TYPES =
    NORMALIZE DOCUMENT TYPE
 ============================================================ */
 
-function normalizeDocumentType(
-  documentType
-) {
+function normalizeDocumentType(documentType) {
+
+  // Reject missing or empty document classifications.
   if (
-    documentType == null
+    documentType == null ||
+    String(documentType).trim() === ""
   ) {
-    return "generic_financial";
+    return "unsupported_document";
   }
 
-  const normalized =
-    String(documentType)
-      .trim()
-      .toLowerCase()
-      .replace(
-        /[\s-]+/g,
-        "_"
-      );
+  // Normalize the document classification.
+  const normalized = String(documentType)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 
+  // Explicitly recognize unsupported documents.
+  if (normalized === "unsupported_document") {
+    return "unsupported_document";
+  }
+
+  // Preserve all five supported financial classifications.
   if (
-    SUPPORTED_FINANCIAL_DOCUMENT_TYPES
-      .has(normalized)
+    SUPPORTED_FINANCIAL_DOCUMENT_TYPES.has(normalized)
   ) {
     return normalized;
   }
 
-  return "generic_financial";
+  // Never automatically classify unknown documents
+  // as generic financial documents.
+  return "unsupported_document";
 }
-
 
 /* ============================================================
    GET FINANCIAL SCHEMA
