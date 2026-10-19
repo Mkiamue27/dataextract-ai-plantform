@@ -627,6 +627,7 @@ GLOBAL FINANCIAL OUTPUT RULES
   medical_bill
   receipt
   generic_financial
+  unsupported_document
 
 - Every object inside "rows" must use exactly the property names
   defined for the selected documentType.
