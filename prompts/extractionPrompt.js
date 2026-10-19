@@ -97,6 +97,49 @@ Use "generic_financial" only when the document is clearly financial
 but does not reliably fit one of the categories above.
 
 
+UNSUPPORTED DOCUMENT RULES:
+
+Use "unsupported_document" when the uploaded document
+does not contain meaningful financial or billing information.
+
+Examples include:
+
+- Employment applications
+- Housing applications
+- General correspondence
+- Resumes
+- Nonfinancial agreements
+- Informational brochures
+- Documents unrelated to financial transactions or billing
+
+IMPORTANT:
+
+Do not classify a document as "generic_financial"
+simply because it contains:
+
+- An organization name
+- An address
+- A telephone number
+- A document date
+- General administrative information
+
+A document must contain identifiable financial information
+relevant to the selected extraction mode.
+
+If the document is unsupported, return exactly:
+
+{
+  "documentType": "unsupported_document",
+  "rows": []
+}
+
+Do not invent financial information to populate the output.
+
+
+IMPORTANT:
+
+Return ONLY valid JSON.
+
 IMPORTANT:
 
 Return ONLY valid JSON.
