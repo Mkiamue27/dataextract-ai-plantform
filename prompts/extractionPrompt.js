@@ -56,6 +56,7 @@ Use exactly ONE of these documentType values:
 - medical_bill
 - receipt
 - generic_financial
+- unsupported_document
 
 
 DOCUMENT CLASSIFICATION RULES:
