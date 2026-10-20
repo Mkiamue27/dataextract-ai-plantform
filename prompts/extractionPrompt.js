@@ -108,324 +108,302 @@ Examples include:
 - Housing applications
 - General correspondence
 - Resumes
-- Nonfinancial agreements
-- Informational brochures
-- Documents unrelated to financial transactions or billing
+- Non-financial medical records
+- Academic documents
+- Legal documents without financial information
+- Other documents that do not contain meaningful financial data
 
-IMPORTANT:
-
-Do not classify a document as "generic_financial"
-simply because it contains:
-
-- An organization name
-- An address
-- A telephone number
-- A document date
-- General administrative information
-
-A document must contain identifiable financial information
-relevant to the selected extraction mode.
-
-If the document is unsupported, return exactly:
+If the document is unsupported, return:
 
 {
   "documentType": "unsupported_document",
   "rows": []
 }
 
-Do not invent financial information to populate the output.
+Do not force an unsupported document into a financial schema.
 
 
-IMPORTANT:
+OUTPUT FORMAT:
 
-Return ONLY valid JSON.
+Return ONLY a valid JSON object.
 
-IMPORTANT:
-
-Return ONLY valid JSON.
-
-The top-level JSON structure MUST be:
+The object must contain exactly these top-level keys:
 
 {
-  "documentType": "",
-  "rows": []
+  "documentType": "...",
+  "rows": [
+    {
+      "...": "..."
+    }
+  ]
 }
 
-The value of "documentType" determines the exact structure of every
-object inside "rows".
+Do not return Markdown.
 
-Do not mix schemas.
+Do not return CSV directly.
 
-Do not add properties that are not part of the selected schema.
+Do not include explanations.
+
+Do not include additional top-level properties.
+
+
+GENERAL EXTRACTION RULES:
+
+1. Extract all meaningful financial records.
+
+2. Preserve the original meaning of every extracted value.
+
+3. Do not invent missing financial values.
+
+4. Do not calculate missing totals.
+
+5. Do not infer payment amounts from unrelated values.
+
+6. Do not move values between unrelated columns.
+
+7. Preserve identifiers as text.
+
+8. Preserve leading zeros in identifiers.
+
+9. Use an empty string for missing fields.
+
+10. Return monetary values as plain numeric strings.
+
+11. Do not include currency symbols in monetary fields.
+
+12. Do not include thousands separators in monetary fields.
+
+13. Preserve negative monetary values.
+
+14. Do not confuse transaction amounts with balances.
+
+15. Do not confuse charges with payments.
+
+16. Do not confuse insurance payments with patient responsibility.
+
+17. Do not confuse discounts with taxes.
+
+18. Do not confuse beginning balances with ending balances.
+
+19. Do not duplicate document-level totals across unrelated rows.
+
+20. Do not fabricate transaction or service rows.
 
 
 ============================================================
 BANK STATEMENT SCHEMA
 ============================================================
 
-If documentType is "bank_statement", return:
+When documentType is "bank_statement", every row must contain
+exactly these keys:
 
 {
-  "documentType": "bank_statement",
-  "rows": [
-    {
-      "Bank/Institution Name": "",
-      "Account ID": "",
-      "Statement Period": "",
-      "Beginning Balance": "",
-      "Ending Balance": "",
-      "Transaction Date": "",
-      "Description": "",
-      "Debit": "",
-      "Credit": "",
-      "Transaction Amount": "",
-      "Running Balance": "",
-      "Total Deposits": "",
-      "Total Withdrawals": "",
-      "Currency": ""
-    }
-  ]
+  "Bank/Institution Name": "",
+  "Account ID": "",
+  "Statement Period": "",
+  "Beginning Balance": "",
+  "Ending Balance": "",
+  "Transaction Date": "",
+  "Description": "",
+  "Debit": "",
+  "Credit": "",
+  "Transaction Amount": "",
+  "Running Balance": "",
+  "Total Deposits": "",
+  "Total Withdrawals": "",
+  "Currency": ""
 }
 
-BANK STATEMENT RULES:
 
-- Return one row for each identifiable transaction.
+BANK STATEMENT EXTRACTION RULES:
 
-- Repeat applicable document-level information on each transaction row.
+- Extract each identifiable transaction as a separate row.
 
-- "Bank/Institution Name" must contain the explicitly identified bank,
-  credit union, or financial institution.
+- Preserve the transaction date exactly as printed.
 
-- "Account ID" must contain the account number or account identifier
-  when shown.
+- Preserve the transaction description.
 
-- Preserve masked account identifiers as shown.
+- Preserve account identifiers as text.
 
-- "Statement Period" must contain the explicitly stated statement
-  period or date range when shown.
+- Preserve leading zeros in account identifiers.
 
-- "Beginning Balance" must contain the explicitly stated opening,
-  beginning, or previous statement balance when it represents the
+- "Beginning Balance" must contain the explicitly stated
   beginning balance for the statement period.
 
-- "Ending Balance" must contain the explicitly stated ending,
-  closing, or new balance for the statement period.
+- "Ending Balance" must contain the explicitly stated
+  ending balance for the statement period.
 
-- "Transaction Date" must contain the transaction or posting date
-  associated with the transaction.
+- "Debit" must contain an explicitly identifiable debit amount.
 
-- "Description" must contain the transaction description,
-  merchant/payee, memo, or other meaningful transaction text.
+- "Credit" must contain an explicitly identifiable credit amount.
 
-- "Debit" must contain an explicitly identifiable debit,
-  withdrawal, charge, payment out, or money-out amount.
+- "Transaction Amount" must contain the explicitly stated
+  transaction amount when available.
 
-- "Credit" must contain an explicitly identifiable credit,
-  deposit, refund, payment in, or money-in amount.
+- "Running Balance" must contain the explicitly stated
+  balance associated with the transaction.
 
-- "Transaction Amount" should contain the transaction amount when
-  the document presents transactions in a single amount column or
-  when the amount is explicitly shown separately from debit/credit.
+- "Total Deposits" must contain the explicitly stated
+  total deposits for the statement period.
 
-- Do not duplicate the same transaction amount into Debit, Credit,
-  and Transaction Amount unless the source structure genuinely
-  supports those fields separately.
+- "Total Withdrawals" must contain the explicitly stated
+  total withdrawals for the statement period.
 
-- "Running Balance" must contain the balance associated with the
-  individual transaction when explicitly shown.
+- Do not calculate beginning or ending balances.
 
-- "Total Deposits" must contain the explicitly stated statement-level
-  deposit or credit total when shown.
+- Do not calculate missing transaction amounts.
 
-- "Total Withdrawals" must contain the explicitly stated statement-level
-  withdrawal or debit total when shown.
+- Do not infer debit or credit direction unless the document
+  explicitly identifies the transaction direction.
 
-- If the statement contains summary balances but no identifiable
-  transaction rows, return one summary row and leave transaction-specific
-  fields blank.
+- Do not convert an ending balance into a transaction amount.
 
-- Do not calculate Beginning Balance, Ending Balance, Running Balance,
-  Total Deposits, or Total Withdrawals when they are not explicitly
-  stated.
+- If the document contains statement-level information but
+  no identifiable transactions, return one summary row.
 
-- Beginning Balance,
-  Ending Balance,
-  Debit,
-  Credit,
-  Transaction Amount,
-  Running Balance,
-  Total Deposits,
-  and Total Withdrawals
-  must contain numeric monetary values only when populated.
-
-- Do not include currency symbols in monetary fields.
-
-- Preserve negative signs when explicitly shown.
-
-- Monetary values must use exactly two decimal places when a value exists.
+- Preserve currency information when explicitly available.
 
 
 ============================================================
 INVOICE SCHEMA
 ============================================================
 
-If documentType is "invoice", return:
+When documentType is "invoice", every row must contain
+exactly these keys:
 
 {
-  "documentType": "invoice",
-  "rows": [
-    {
-      "Vendor/Issuer Name": "",
-      "Invoice Number": "",
-      "Invoice Date": "",
-      "Due Date": "",
-      "Line Item Description": "",
-      "Quantity": "",
-      "Unit Price": "",
-      "Discount": "",
-      "Tax": "",
-      "Line Total": "",
-      "Subtotal": "",
-      "Total Amount": "",
-      "Amount Paid": "",
-      "Amount Due": "",
-      "Currency": "",
-      "Issuer Contact Phone": "",
-      "Issuer Mailing Address": ""
-    }
-  ]
+  "Vendor/Issuer Name": "",
+  "Invoice Number": "",
+  "Invoice Date": "",
+  "Due Date": "",
+  "Line Item Description": "",
+  "Quantity": "",
+  "Unit Price": "",
+  "Discount": "",
+  "Tax": "",
+  "Line Total": "",
+  "Subtotal": "",
+  "Total Amount": "",
+  "Amount Paid": "",
+  "Amount Due": "",
+  "Currency": "",
+  "Issuer Contact Phone": "",
+  "Issuer Mailing Address": ""
 }
 
-INVOICE RULES:
 
-- Return one row for each identifiable invoice line item.
+INVOICE EXTRACTION RULES:
 
-- Repeat applicable document-level information and financial summary
-  values on each row.
+- Extract each identifiable invoice line item as a separate row.
 
-- "Vendor/Issuer Name" must contain the company, organization,
-  provider, or person issuing the invoice.
+- Preserve the vendor or issuer name.
 
-- "Invoice Number" must contain the explicitly stated invoice number
-  or invoice identifier.
+- Preserve the invoice number exactly as printed.
 
-- "Invoice Date" must contain the explicitly stated invoice date.
+- Preserve leading zeros in invoice identifiers.
 
-- "Due Date" must contain the explicitly stated payment due date.
+- Preserve invoice and due dates as printed.
 
-- "Line Item Description" must contain the product, service,
-  fee, charge, or other line-item description.
+- Preserve line item descriptions.
 
-- "Quantity" must contain only numeric quantity values when available.
+- Preserve explicitly stated quantities.
 
-- "Unit Price" must contain the explicitly stated unit price.
+- Preserve explicitly stated unit prices.
 
-- "Discount" must contain an explicitly stated line-level or
-  applicable discount.
+- Preserve explicitly stated discounts.
 
-- "Tax" must contain an explicitly stated tax value.
+- Preserve explicitly stated taxes.
 
-- "Line Total" must contain the explicitly stated total for the
-  individual line item.
+- Preserve explicitly stated line totals.
 
-- "Subtotal" must contain the explicitly stated invoice subtotal.
+- Preserve the explicitly stated subtotal.
 
-- "Total Amount" must contain the explicitly stated invoice total.
+- Preserve the explicitly stated total amount.
 
-- "Amount Paid" must contain an explicitly stated paid amount,
-  payment, or credit applied toward the invoice.
+- Preserve the explicitly stated amount paid.
 
-- "Amount Due" must contain the explicitly stated remaining amount due.
+- Preserve the explicitly stated amount due.
 
-- If the invoice contains important summary values but no identifiable
-  line items, return one summary row.
+- Do not calculate missing line totals.
 
-- Do not calculate totals when the source does not explicitly provide them.
+- Do not calculate missing taxes.
 
-- Unit Price,
-  Discount,
-  Tax,
-  Line Total,
-  Subtotal,
-  Total Amount,
-  Amount Paid,
-  and Amount Due
-  must contain numeric monetary values only when populated.
+- Do not calculate missing discounts.
 
-- Do not include currency symbols in monetary fields.
+- Do not calculate missing subtotals.
 
-- Monetary values must use exactly two decimal places when a value exists.
+- Do not calculate missing totals.
+
+- Do not assume that the total amount equals the amount due.
+
+- Do not assume that an unpaid invoice has an amount paid of zero.
+
+- Do not repeat document-level totals across every line item.
+
+- If the document contains invoice-level information but
+  no identifiable line items, return one summary row.
+
+- Preserve contact phone numbers when explicitly printed.
+
+- Preserve mailing addresses when explicitly printed.
 
 
 ============================================================
-MEDICAL BILL / EOB SCHEMA
+MEDICAL BILL / EXPLANATION OF BENEFITS SCHEMA
 ============================================================
 
-If documentType is "medical_bill", return:
+When documentType is "medical_bill", every row must contain
+exactly these keys:
 
 {
-  "documentType": "medical_bill",
-  "rows": [
-    {
-      "Provider Name": "",
-      "Account/Claim ID": "",
-      "Service Date": "",
-      "Line Item Description": "",
-      "CPT/HCPCS Code": "",
-      "Quantity": "",
-      "Gross Charge": "",
-      "Adjustment/Discount": "",
-      "Insurance Payment": "",
-      "Patient Responsibility": "",
-      "Line Balance": "",
-      "Total Charges": "",
-      "Total Adjustments": "",
-      "Total Insurance Payments": "",
-      "Total Patient Responsibility": "",
-      "Amount Due": "",
-      "Currency": "",
-      "Provider Contact Phone": "",
-      "Provider Mailing Address": ""
-    }
-  ]
+  "Provider Name": "",
+  "Account/Claim ID": "",
+  "Service Date": "",
+  "Line Item Description": "",
+  "CPT/HCPCS Code": "",
+  "Quantity": "",
+  "Gross Charge": "",
+  "Adjustment/Discount": "",
+  "Insurance Payment": "",
+  "Patient Responsibility": "",
+  "Line Balance": "",
+  "Total Charges": "",
+  "Total Adjustments": "",
+  "Total Insurance Payments": "",
+  "Total Patient Responsibility": "",
+  "Amount Due": "",
+  "Currency": "",
+  "Provider Contact Phone": "",
+  "Provider Mailing Address": ""
 }
 
-MEDICAL BILL RULES:
 
-- Return one row for each identifiable medical service,
-  procedure, charge, adjustment, or applicable service line.
+MEDICAL BILL EXTRACTION RULES:
 
-- Repeat applicable document-level information and summary values
-  on each row.
+- Extract each identifiable medical billing service as a separate row.
 
-- "Provider Name" must contain the healthcare provider,
-  facility, physician group, insurer, or issuer as appropriate.
+- Preserve the healthcare provider name.
 
-- "Account/Claim ID" must contain the patient account number,
-  claim number, statement identifier, or similar financial identifier
-  when explicitly shown.
+- Preserve account and claim identifiers exactly as printed.
 
-- "Service Date" must contain the applicable date of service.
+- Preserve leading zeros in account and claim identifiers.
 
-- "Line Item Description" must contain the service or procedure
-  description.
+- Preserve service dates as printed.
 
-- "CPT/HCPCS Code" must contain only legitimate procedure,
-  CPT, or HCPCS codes.
+- Preserve medical service descriptions.
 
-- Descriptive text such as "New Patient", "Established Patient",
-  "Level IV", or "Level V" belongs in "Line Item Description",
-  not "CPT/HCPCS Code".
+- Preserve CPT and HCPCS codes as text.
 
-- "Quantity" must contain only numeric quantity values when available.
+- Preserve explicitly stated quantities.
 
-- "Gross Charge" must contain the original service charge when shown.
+- "Gross Charge" must contain the explicitly stated
+  charge for the individual service line.
 
-- "Adjustment/Discount" must contain the applicable contractual
-  adjustment, write-off, discount, or similar line-level value.
+- "Adjustment/Discount" must contain the explicitly stated
+  adjustment or discount applicable to the service line.
 
-- "Insurance Payment" must contain an explicitly stated insurer,
-  plan, or payer payment applicable to the service line.
+- "Insurance Payment" must contain the explicitly stated
+  insurance payment applicable to the service line.
 
 - "Patient Responsibility" must contain the explicitly stated
   patient responsibility applicable to the service line.
@@ -452,8 +430,8 @@ MEDICAL BILL RULES:
 
 - Do not calculate totals from service rows unless the document itself
   explicitly provides those totals.
-
-- Gross Charge,
+  
+  - Gross Charge,
   Adjustment/Discount,
   Insurance Payment,
   Patient Responsibility,
@@ -661,6 +639,73 @@ GLOBAL FINANCIAL OUTPUT RULES
 
 
 /* ============================================================
+   UNIVERSAL DOCUMENT EXTRACTION (STAGED - NOT YET ROUTED)
+============================================================ */
+
+const UNIVERSAL_EXTRACTION_PROMPT = `
+${BASE_RULES}
+
+Extract meaningful structured data from ANY readable document,
+including medical records, contracts, resumes, academic documents,
+inventory lists, invoices, receipts, reports, and correspondence.
+
+Return ONLY valid JSON with exactly this top-level structure:
+{
+  "documentType": "descriptive_document_type",
+  "columns": ["Column A", "Column B"],
+  "rows": [
+    { "Column A": "source-supported value", "Column B": "" }
+  ]
+}
+
+DOCUMENT RECOGNITION:
+- Identify the document type from the content, not from the filename.
+- Use a short, descriptive, lowercase snake_case documentType.
+- Do not label nonfinancial documents as financial merely because they
+  contain dates, names, addresses, identifiers, or occasional numbers.
+
+DYNAMIC COLUMN RULES:
+- Choose concise, human-readable columns appropriate to the source.
+- Prefer actual table headers where meaningful and unambiguous.
+- For documents without tables, choose fields that preserve useful
+  source-supported information, including meaningful narrative text.
+- Do not force financial, monetary, billing, or transaction columns
+  onto nonfinancial documents.
+- Do not create columns solely to fill a predefined template.
+- Every object in rows must have exactly the same keys as columns,
+  in the same order. Use an empty string for a missing cell.
+- Use distinct, nonempty column names; do not repeat headers.
+- Represent cell values as strings. Preserve the source wording
+  and dates wherever possible.
+
+RECORD RULES:
+- Create one row per meaningful repeated record or table row.
+- For single-record documents, a single row may be appropriate.
+- Do not combine unrelated entities into a fabricated record.
+- Preserve important document-level information in relevant columns
+  when it can be represented accurately without misleading repetition.
+- Keep significant descriptive content, including clinical services,
+  observations, responsibilities, and other nonnumeric information.
+- Never invent missing information or calculate unsupported values.
+
+FAILURE RULES:
+- If no meaningful structured information can be reliably extracted,
+  return exactly:
+  {"documentType":"unsupported_document","columns":[],"rows":[]}
+- Do not return headers without meaningful data rows.
+- Do not return rows whose cells are all empty.
+- Do not treat the presence of a name or date alone as proof that
+  a particular financial schema applies.
+
+OUTPUT RULES:
+- Return only a JSON object, with no Markdown or commentary.
+- The columns array must be nonempty whenever rows are present.
+- The rows array must contain only plain JSON objects.
+- Do not add other top-level properties.
+`;
+
+
+/* ============================================================
    OCR
 ============================================================ */
 
@@ -823,6 +868,7 @@ module.exports = {
   getExtractionPrompt,
   BASE_RULES,
   FINANCIAL_CSV_PROMPT,
+  UNIVERSAL_EXTRACTION_PROMPT,
   OCR_PROMPT,
   TABLE_PROMPT,
   JSON_PROMPT,
