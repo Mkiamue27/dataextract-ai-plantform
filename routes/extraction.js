@@ -34,6 +34,7 @@ const archiver = require("archiver");
 
 const { getAuth } = require("firebase-admin/auth");
 
+
 /* ============================================================
    FIREBASE AUTHENTICATION MIDDLEWARE
 ============================================================ */
@@ -76,7 +77,10 @@ async function requireFirebaseAuth(req, res, next) {
     next();
 
   } catch (error) {
-    console.error("Firebase authentication error:", error.code || error.message);
+    console.error(
+      "Firebase authentication error:",
+      error.code || error.message
+    );
 
     return res.status(401).json({
       success: false,
@@ -84,6 +88,7 @@ async function requireFirebaseAuth(req, res, next) {
     });
   }
 }
+
 
 /* ============================================================
    SUPABASE
@@ -228,32 +233,32 @@ function buildFriendlyOutputFileName(
     baseName =
       "receipt";
 
-} else if (
-  normalized.includes("eob") ||
-  normalized.includes(
-    "explanation_of_benefits"
-  )
-) {
-  baseName =
-    "medical_eob";
+  } else if (
+    normalized.includes("eob") ||
+    normalized.includes(
+      "explanation_of_benefits"
+    )
+  ) {
+    baseName =
+      "medical_eob";
 
-} else if (
-  normalized.includes("medical_bill")
-) {
-  baseName =
-    "medical_bill";
+  } else if (
+    normalized.includes("medical_bill")
+  ) {
+    baseName =
+      "medical_bill";
 
-} else if (
-  normalized.includes("medical")
-) {
-  baseName =
-    "medical_document";
+  } else if (
+    normalized.includes("medical")
+  ) {
+    baseName =
+      "medical_document";
 
-} else if (
-  normalized.includes("contract")
-) {
-  baseName =
-    "contract";
+  } else if (
+    normalized.includes("contract")
+  ) {
+    baseName =
+      "contract";
 
   } else if (
     normalized.includes("resume") ||
@@ -504,9 +509,24 @@ function financialJsonToCsv(
       rawContent
     );
 
+  // Reject headers-only or entirely empty extracted rows.
+  const meaningfulRows = extraction.rows.filter((row) =>
+    row && typeof row === "object" && !Array.isArray(row) &&
+    Object.values(row).some((value) =>
+      value !== null && value !== undefined &&
+      String(value).trim().length > 0
+    )
+  );
+
+  if (meaningfulRows.length === 0) {
+    throw new Error(
+      "No extractable data rows were found in this document."
+    );
+  }
+
   const csv =
     structuredRowsToCsv(
-      extraction.rows,
+      meaningfulRows,
       extraction.documentType
     );
 
@@ -711,21 +731,21 @@ async function recordConversionHistory({
     null
   );
 }
-
-
 /* ============================================================
    POST /extract
+   MAIN DOCUMENT EXTRACTION ROUTE
 ============================================================ */
+
 router.post(
   "/",
 
   requireFirebaseAuth,
 
-  (
-    req,
-    res,
-    next
-  ) => {
+  /* ============================================================
+     REQUEST LOGGING
+  ============================================================ */
+
+  (req, res, next) => {
 
     console.log(
       "========================================"
@@ -737,8 +757,7 @@ router.post(
 
     console.log(
       "Time:",
-      new Date()
-        .toISOString()
+      new Date().toISOString()
     );
 
     console.log(
@@ -753,15 +772,16 @@ router.post(
 
     console.log(
       "Content-Type:",
-      req.headers[
-        "content-type"
-      ] ||
-      "unknown"
+      req.headers["content-type"] || "unknown"
     );
 
     next();
   },
 
+
+  /* ============================================================
+     MULTER FILE UPLOAD
+  ============================================================ */
 
   upload.array(
     "files",
@@ -769,11 +789,11 @@ router.post(
   ),
 
 
-  (
-    req,
-    res,
-    next
-  ) => {
+  /* ============================================================
+     UPLOAD DIAGNOSTICS
+  ============================================================ */
+
+  (req, res, next) => {
 
     console.log(
       "=== MULTER FINISHED ==="
@@ -781,46 +801,36 @@ router.post(
 
     console.log(
       "Files after multer:",
-      Array.isArray(
-        req.files
-      )
+      Array.isArray(req.files)
         ? req.files.length
         : 0
     );
 
     console.log(
       "Body keys:",
-      Object.keys(
-        req.body || {}
-      )
+      Object.keys(req.body || {})
     );
 
-
-    if (
-      Array.isArray(
-        req.files
-      )
-    ) {
+    if (Array.isArray(req.files)) {
 
       console.log(
         "Parsed filenames:",
         req.files.map(
-          (file) =>
-            file.originalname
+          (file) => file.originalname
         )
       );
-    }
 
+    }
 
     next();
   },
 
 
-  (
-    req,
-    res,
-    next
-  ) => {
+  /* ============================================================
+     USAGE LIMIT DIAGNOSTICS
+  ============================================================ */
+
+  (req, res, next) => {
 
     console.log(
       "=== ABOUT TO CHECK USAGE LIMIT ==="
@@ -828,32 +838,26 @@ router.post(
 
     console.log(
       "firebase_uid present:",
-      Boolean(
-        req.body
-          ?.firebase_uid
-      )
+      Boolean(req.body?.firebase_uid)
     );
 
     console.log(
       "processingMode present:",
-      Boolean(
-        req.body
-          ?.processingMode
-      )
+      Boolean(req.body?.processingMode)
     );
 
     next();
   },
 
 
+  /* ============================================================
+     CHECK SUBSCRIPTION USAGE LIMIT
+  ============================================================ */
+
   checkUsageLimit,
 
 
-  (
-    req,
-    res,
-    next
-  ) => {
+  (req, res, next) => {
 
     console.log(
       "=== USAGE LIMIT PASSED ==="
@@ -861,15 +865,13 @@ router.post(
 
     next();
   },
-  
-    /* ============================================================
-     EXTRACTION HANDLER
+
+
+  /* ============================================================
+     MAIN EXTRACTION HANDLER
   ============================================================ */
 
-  async (
-    req,
-    res
-  ) => {
+  async (req, res) => {
 
     try {
 
@@ -879,87 +881,67 @@ router.post(
 
       console.log(
         "Processing mode received:",
-        req.body
-          ?.processingMode ||
+        req.body?.processingMode ||
         "(not supplied)"
       );
 
       console.log(
         "Firebase UID supplied:",
-        Boolean(
-          req.body
-            ?.firebase_uid
-        )
+        Boolean(req.body?.firebase_uid)
       );
 
       console.log(
         "Files received:",
-        Array.isArray(
-          req.files
-        )
+        Array.isArray(req.files)
           ? req.files.length
           : 0
       );
 
 
       /* ========================================================
-         VALIDATE FILES
+         VALIDATE UPLOADED FILES
       ======================================================== */
 
       if (
-        !Array.isArray(
-          req.files
-        ) ||
+        !Array.isArray(req.files) ||
         req.files.length === 0
       ) {
 
         console.warn(
-          "Extraction stopped: no uploaded files were received."
+          "Extraction stopped: no uploaded files."
         );
 
+        return res.status(400).json({
+          success: false,
+          error: "No files uploaded."
+        });
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "No files uploaded.",
-          });
       }
 
 
       /* ========================================================
-         FIREBASE UID
+         VALIDATE FIREBASE USER
       ======================================================== */
 
       const firebaseUid =
-        req.body
-          .firebase_uid;
+        req.firebaseUser.uid;
 
+      const suppliedUid =
+        String(
+          req.body?.firebase_uid || ""
+        ).trim();
 
       if (
-        !firebaseUid ||
-        firebaseUid
-          .trim()
-          .length === 0
+        suppliedUid &&
+        suppliedUid !== firebaseUid
       ) {
 
-        console.warn(
-          "Extraction stopped: firebase_uid missing."
-        );
+        return res.status(403).json({
+          success: false,
+          error:
+            "The supplied user ID does not match the authenticated user."
+        });
 
-
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "Missing firebase_uid.",
-          });
       }
 
 
@@ -968,22 +950,18 @@ router.post(
       ======================================================== */
 
       const processingMode =
-        req.body
-          .processingMode ||
+        req.body?.processingMode ||
         DEFAULT_PROCESSING_MODE;
-
 
       console.log(
         "Resolved processing mode:",
         processingMode
       );
 
-
       if (
-        !SUPPORTED_PROCESSING_MODES
-          .has(
-            processingMode
-          )
+        !SUPPORTED_PROCESSING_MODES.has(
+          processingMode
+        )
       ) {
 
         console.warn(
@@ -991,16 +969,12 @@ router.post(
           processingMode
         );
 
+        return res.status(400).json({
+          success: false,
+          error:
+            `Unsupported processing mode: ${processingMode}`
+        });
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              `Unsupported processing mode: ${processingMode}`,
-          });
       }
 
 
@@ -1012,7 +986,6 @@ router.post(
         getExtractionPrompt(
           processingMode
         );
-
 
       console.log(
         "Extraction prompt loaded."
@@ -1042,15 +1015,9 @@ router.post(
         const file =
           req.files[fileIndex];
 
-
         const inputFileName =
           file.originalname ||
           "document.pdf";
-
-
-        /*
-         * Initial fallback filename.
-         */
 
         let outputFileName =
           buildOutputFileName(
@@ -1058,6 +1025,19 @@ router.post(
             processingMode
           );
 
+        // Declared outside the try block so that
+        // failed-history handling can access it.
+
+        let documentType = null;
+
+        let schemaHeader = null;
+
+        let validation = null;
+
+
+        /* ====================================================
+           INDIVIDUAL FILE PROCESSING
+        ==================================================== */
 
         try {
 
@@ -1072,30 +1052,44 @@ router.post(
 
           console.log(
             "Input MIME type:",
-            file.mimetype ||
-            "unknown"
+            file.mimetype || "unknown"
           );
 
           console.log(
             "Input size:",
             file.size ||
-            file.buffer
-              ?.length ||
+            file.buffer?.length ||
             0
           );
 
 
           /* ====================================================
-             OPENAI CALL
+             VALIDATE FILE CONTENT
+          ==================================================== */
+
+          if (
+            !file.buffer ||
+            file.buffer.length === 0
+          ) {
+
+            throw new Error(
+              "Uploaded file is empty."
+            );
+
+          }
+
+
+          /* ====================================================
+             OPENAI EXTRACTION
           ==================================================== */
 
           console.log(
             "=== ABOUT TO CALL OPENAI ==="
           );
 
-
           const rawContent =
             await extractDocument({
+
               fileBuffer:
                 file.buffer,
 
@@ -1109,6 +1103,7 @@ router.post(
               processingMode,
 
               prompt,
+
             });
 
 
@@ -1116,44 +1111,40 @@ router.post(
             "=== OPENAI RESPONSE RECEIVED ==="
           );
 
-
           console.log(
             "OpenAI response length:",
             String(
-              rawContent ||
-              ""
+              rawContent || ""
             ).length
           );
 
 
           /* ====================================================
-             MODE-AWARE OUTPUT PROCESSING
+             INITIALIZE OUTPUT
           ==================================================== */
 
           let finalContent =
             rawContent;
 
-          let validation =
-            null;
 
-          let documentType =
-            null;
-
-          let schemaHeader =
-            null;
-
+          /* ====================================================
+             ADAPTIVE FINANCIAL PROCESSING
+          ==================================================== */
 
           if (
-            FINANCIAL_OUTPUT_MODES
-              .has(
-                processingMode
-              )
+            FINANCIAL_OUTPUT_MODES.has(
+              processingMode
+            )
           ) {
 
             console.log(
               "=== PARSING ADAPTIVE FINANCIAL JSON ==="
             );
 
+
+            /* ==================================================
+               CONVERT STRUCTURED JSON TO CSV
+            ================================================== */
 
             const adaptiveOutput =
               financialJsonToCsv(
@@ -1162,13 +1153,10 @@ router.post(
 
 
             documentType =
-              adaptiveOutput
-                .documentType;
+              adaptiveOutput.documentType;
 
             schemaHeader =
-              adaptiveOutput
-                .schema
-                .header;
+              adaptiveOutput.schema.header;
 
 
             console.log(
@@ -1183,7 +1171,7 @@ router.post(
 
 
             /* ==================================================
-               BUILD FRIENDLY OUTPUT FILENAME FROM DETECTED TYPE
+               BUILD OUTPUT FILENAME
             ================================================== */
 
             outputFileName =
@@ -1192,6 +1180,7 @@ router.post(
                 processingMode,
                 fileIndex
               );
+
 
             console.log(
               "Detected document type:",
@@ -1230,49 +1219,81 @@ router.post(
 
             console.log(
               "CSV validation errors:",
-              validation
-                .errors
-                .length
+              Array.isArray(
+                validation.errors
+              )
+                ? validation.errors.length
+                : 0
             );
 
 
             console.log(
               "CSV validated rows:",
-              validation
-                .rows
-                .length
+              Array.isArray(
+                validation.rows
+              )
+                ? validation.rows.length
+                : 0
             );
 
 
             console.log(
               "Cleaned CSV length:",
               String(
-                validation
-                  .cleanedCsv ||
-                ""
+                validation.cleanedCsv || ""
               ).length
             );
 
 
-            finalContent =
-              validation
-                .cleanedCsv;
-
+            /* ==================================================
+               VALIDATION FAILURE
+            ================================================== */
 
             if (!validation.valid) {
-  console.error(
-    `CSV validation failed for "${inputFileName}":`,
-    validation.errors
-  );
 
-  throw new Error(
-    `CSV validation failed: ${
-      Array.isArray(validation.errors)
-        ? validation.errors.join("; ")
-        : "Invalid or empty extraction result."
-    }`
-  );
-}
+              console.error(
+                `CSV validation failed for "${inputFileName}":`,
+                validation.errors
+              );
+
+              throw new Error(
+                `CSV validation failed: ${
+                  Array.isArray(
+                    validation.errors
+                  )
+                    ? validation.errors.join("; ")
+                    : "Invalid extraction result."
+                }`
+              );
+
+            }
+
+
+            /* ==================================================
+               REJECT CSV WITHOUT DATA ROWS
+            ================================================== */
+
+            if (
+              !Array.isArray(validation.rows) ||
+              validation.rows.length === 0
+            ) {
+
+              throw new Error(
+                "Extraction produced no CSV data rows."
+              );
+
+            }
+
+
+            /* ==================================================
+               SET VALIDATED CONTENT
+            ================================================== */
+
+            finalContent =
+              validation.cleanedCsv;
+
+
+          } // END ADAPTIVE FINANCIAL PROCESSING
 
 
           /* ====================================================
@@ -1295,17 +1316,14 @@ router.post(
           console.log(
             "Final content length:",
             String(
-              finalContent ||
-              ""
+              finalContent || ""
             ).length
           );
 
 
           if (
             !finalContent ||
-            String(
-              finalContent
-            )
+            String(finalContent)
               .trim()
               .length === 0
           ) {
@@ -1314,10 +1332,10 @@ router.post(
               "FINAL CONTENT IS EMPTY."
             );
 
-
             throw new Error(
               "Extraction produced empty final content."
             );
+
           }
 
 
@@ -1331,8 +1349,8 @@ router.post(
 
             historyId =
               await recordConversionHistory({
-                firebaseUid:
-                  firebaseUid.trim(),
+
+                firebaseUid,
 
                 inputFileName,
 
@@ -1347,7 +1365,9 @@ router.post(
 
                 content:
                   finalContent,
+
               });
+
 
           } catch (historyError) {
 
@@ -1355,6 +1375,7 @@ router.post(
               `Failed to record conversion history for "${inputFileName}":`,
               historyError
             );
+
           }
 
 
@@ -1363,6 +1384,7 @@ router.post(
           ==================================================== */
 
           results.push({
+
             id:
               historyId,
 
@@ -1392,31 +1414,28 @@ router.post(
             validation:
               validation
                 ? {
+
                     valid:
-                      validation
-                        .valid,
+                      validation.valid,
 
                     errors:
-                      validation
-                        .errors,
+                      validation.errors,
 
                     flaggedRows:
-                      validation
-                        .flaggedRows,
+                      validation.flaggedRows,
 
                     expectedColumns:
-                      validation
-                        .expectedColumns,
+                      validation.expectedColumns,
 
                     documentType:
-                      validation
-                        .documentType,
+                      validation.documentType,
 
                     header:
-                      validation
-                        .header,
+                      validation.header,
+
                   }
                 : null,
+
           });
 
 
@@ -1425,7 +1444,8 @@ router.post(
           );
 
 
-                } catch (fileError) {
+        } catch (fileError) {
+
 
           /* ====================================================
              FILE EXTRACTION ERROR HANDLER
@@ -1441,45 +1461,39 @@ router.post(
              RECORD FAILED HISTORY
           ==================================================== */
 
-          let failedHistoryId =
-            null;
+          let failedHistoryId = null;
 
           try {
 
             failedHistoryId =
               await recordConversionHistory({
-                firebaseUid:
-                  firebaseUid.trim(),
 
-                inputFileName:
-                  inputFileName,
+                firebaseUid,
 
-                outputFileName:
-                  outputFileName,
+                inputFileName,
 
-                processingMode:
-                  processingMode,
+                outputFileName,
 
-                documentType:
-                  typeof documentType !== "undefined"
-                    ? documentType
-                    : null,
+                processingMode,
+
+                documentType,
 
                 status:
                   "failed",
 
                 content:
                   "",
+
               });
 
-          } catch (
-            historyError
-          ) {
+
+          } catch (historyError) {
 
             console.error(
               `Failed to record failed conversion history for "${inputFileName}":`,
               historyError
             );
+
           }
 
 
@@ -1488,6 +1502,7 @@ router.post(
           ==================================================== */
 
           errors.push({
+
             id:
               failedHistoryId,
 
@@ -1498,10 +1513,7 @@ router.post(
 
             processingMode,
 
-            documentType:
-              typeof documentType !== "undefined"
-                ? documentType
-                : null,
+            documentType,
 
             success:
               false,
@@ -1510,14 +1522,16 @@ router.post(
               "failed",
 
             error:
-              fileError
-                ?.message ||
+              fileError?.message ||
               "Document extraction failed.",
+
           });
 
-        } // closes catch (fileError)
 
-      } // closes for-loop
+        } // END INDIVIDUAL FILE TRY/CATCH
+
+
+      } // END FILE PROCESSING LOOP
 
 
       /* ========================================================
@@ -1527,25 +1541,22 @@ router.post(
       try {
 
         await recordSuccessfulUsage(
-          firebaseUid
-            .trim(),
-
+          firebaseUid,
           results.length
         );
 
-      } catch (
-        usageError
-      ) {
+      } catch (usageError) {
 
         console.error(
           "Failed to record usage:",
           usageError
         );
+
       }
 
 
       /* ========================================================
-         RESPONSE
+         RESPONSE DIAGNOSTICS
       ======================================================== */
 
       console.log(
@@ -1555,8 +1566,7 @@ router.post(
 
       console.log(
         "Total files:",
-        req.files
-          .length
+        req.files.length
       );
 
 
@@ -1576,30 +1586,25 @@ router.post(
         "Response results:",
         results.map(
           (result) => ({
+
             file:
-              result
-                .outputFileName,
+              result.outputFileName,
 
             documentType:
-              result
-                .documentType,
+              result.documentType,
 
             columns:
               Array.isArray(
-                result
-                  .schemaHeader
+                result.schemaHeader
               )
-                ? result
-                    .schemaHeader
-                    .length
+                ? result.schemaHeader.length
                 : null,
 
             contentLength:
               String(
-                result
-                  .content ||
-                ""
+                result.content || ""
               ).length,
+
           })
         )
       );
@@ -1610,35 +1615,43 @@ router.post(
       );
 
 
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
+      /* ========================================================
+         FINAL API RESPONSE
+      ======================================================== */
 
-          processingMode,
+      return res.status(200).json({
 
-          totalFiles:
-            req.files.length,
+        success:
+          results.length > 0,
 
-          successfulFiles:
-            results.length,
+        processingMode,
 
-          failedFiles:
-            errors.length,
+        totalFiles:
+          req.files.length,
 
-          partialSuccess:
-            errors.length > 0,
+        successfulFiles:
+          results.length,
 
-          results,
+        failedFiles:
+          errors.length,
 
-          errors,
-        });
+        partialSuccess:
+          results.length > 0 &&
+          errors.length > 0,
+
+        results,
+
+        errors,
+
+      });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
+
+
+      /* ========================================================
+         MAIN EXTRACTION ROUTE ERROR
+      ======================================================== */
 
       console.error(
         "Extraction route error:",
@@ -1646,23 +1659,29 @@ router.post(
       );
 
 
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
+      return res.status(500).json({
 
-          error:
-            error?.message ||
-            "Document extraction failed.",
-        });
-    }
-  }
-);
+        success:
+          false,
 
+        error:
+          error?.message ||
+          "Document extraction failed.",
+
+      });
+
+
+    } // END MAIN TRY/CATCH
+
+
+  } // END MAIN EXTRACTION HANDLER
+
+
+); // END POST /extract ROUTE
 
 /* ============================================================
    POST /extract/download-all-zip
+   DOWNLOAD MULTIPLE EXTRACTED FILES
 ============================================================ */
 
 router.post(
@@ -1675,7 +1694,9 @@ router.post(
   }),
 
   async (req, res) => {
+
     try {
+
       console.log(
         "========================================"
       );
@@ -1685,17 +1706,9 @@ router.post(
       );
 
 
-      /*
-       * IMPORTANT:
-       *
-       * FlutterFlow downloadAllCsvAsZip sends:
-       *
-       * {
-       *   "results": [...]
-       * }
-       *
-       * Therefore this route must read req.body.results.
-       */
+      /* ======================================================
+         READ RESULTS FROM FLUTTERFLOW
+      ====================================================== */
 
       const files =
         req.body?.results;
@@ -1718,28 +1731,36 @@ router.post(
         files.length === 0
       ) {
 
-        return res
-          .status(400)
-          .json({
-            success: false,
+        return res.status(400).json({
 
-            error:
-              "No files supplied for ZIP download.",
-          });
+          success: false,
+
+          error:
+            "No files supplied for ZIP download.",
+
+        });
+
       }
 
 
       /* ======================================================
-         KEEP ONLY VALID FILES
+         KEEP ONLY SUCCESSFUL FILES WITH CONTENT
       ====================================================== */
 
       const validFiles =
         files.filter(
           (file) =>
+
             file &&
-            typeof file.content ===
-              "string" &&
-            file.content.length > 0
+
+            file.success !== false &&
+
+            file.status !== "failed" &&
+
+            typeof file.content === "string" &&
+
+            file.content.trim().length > 0
+
         );
 
 
@@ -1747,14 +1768,15 @@ router.post(
         validFiles.length === 0
       ) {
 
-        return res
-          .status(400)
-          .json({
-            success: false,
+        return res.status(400).json({
 
-            error:
-              "No valid file content supplied for ZIP download.",
-          });
+          success: false,
+
+          error:
+            "No valid extracted files supplied for ZIP download.",
+
+        });
+
       }
 
 
@@ -1765,7 +1787,7 @@ router.post(
 
 
       /* ======================================================
-         RESPONSE HEADERS
+         ZIP RESPONSE HEADERS
       ====================================================== */
 
       const zipFileName =
@@ -1785,7 +1807,7 @@ router.post(
 
 
       /* ======================================================
-         CREATE ZIP
+         CREATE ZIP ARCHIVE
       ====================================================== */
 
       const archive =
@@ -1807,6 +1829,7 @@ router.post(
             "ZIP warning:",
             warning
           );
+
         }
       );
 
@@ -1825,21 +1848,21 @@ router.post(
             !res.headersSent
           ) {
 
-            res
-              .status(500)
-              .json({
-                success: false,
+            res.status(500).json({
 
-                error:
-                  "Unable to create ZIP file.",
-              });
+              success: false,
+
+              error:
+                "Unable to create ZIP file.",
+
+            });
 
           } else {
 
-            res.destroy(
-              error
-            );
+            res.destroy(error);
+
           }
+
         }
       );
 
@@ -1859,11 +1882,10 @@ router.post(
               file.outputFileName ||
               file.filename ||
               `extracted_file_${index + 1}.csv`
-            )
-              .replace(
-                /[\/\\]/g,
-                "_"
-              );
+            ).replace(
+              /[\/\\]/g,
+              "_"
+            );
 
 
           console.log(
@@ -1875,10 +1897,10 @@ router.post(
           archive.append(
             file.content,
             {
-              name:
-                filename,
+              name: filename,
             }
           );
+
         }
       );
 
@@ -1912,25 +1934,30 @@ router.post(
         !res.headersSent
       ) {
 
-        return res
-          .status(500)
-          .json({
-            success: false,
+        return res.status(500).json({
 
-            error:
-              error?.message ||
-              "Unable to create ZIP download.",
-          });
+          success: false,
+
+          error:
+            error?.message ||
+            "Unable to create ZIP download.",
+
+        });
+
       }
 
 
       res.end();
+
     }
+
   }
 );
 
+
 /* ============================================================
    GET /extract/conversion-history
+   LOAD USER EXTRACTION HISTORY
 ============================================================ */
 
 router.get(
@@ -1939,6 +1966,7 @@ router.get(
   requireFirebaseAuth,
 
   async (req, res) => {
+
     try {
 
       const firebaseUid =
@@ -1946,52 +1974,25 @@ router.get(
 
 
       /* ========================================================
-         VALIDATE USER
-      ======================================================== */
-
-      if (
-        !firebaseUid ||
-        String(firebaseUid)
-          .trim()
-          .length === 0
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "Missing firebase_uid.",
-          });
-      }
-
-
-      /* ========================================================
-         LOAD THIS USER'S CONVERSION HISTORY
+         LOAD USER'S CONVERSION HISTORY
       ======================================================== */
 
       const {
         data,
         error,
       } = await supabase
-        .from(
-          "conversion_history"
-        )
+        .from("conversion_history")
         .select(
           "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
         )
         .eq(
           "firebase_uid",
-          String(firebaseUid)
-            .trim()
+          firebaseUid
         )
         .order(
           "timestamp",
           {
-            ascending:
-              false,
+            ascending: false,
           }
         )
         .limit(50);
@@ -2005,41 +2006,36 @@ router.get(
         );
 
 
-        return res
-          .status(500)
-          .json({
-            success:
-              false,
+        return res.status(500).json({
 
-            error:
-              "Unable to load conversion history.",
-          });
+          success: false,
+
+          error:
+            "Unable to load conversion history.",
+
+        });
+
       }
 
 
       /* ========================================================
-         SUCCESS
+         SUCCESS RESPONSE
       ======================================================== */
 
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
+      return res.status(200).json({
 
-          count:
-            data?.length ||
-            0,
+        success: true,
 
-          history:
-            data ||
-            [],
-        });
+        count:
+          data?.length || 0,
+
+        history:
+          data || [],
+
+      });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "Conversion history route error:",
@@ -2047,32 +2043,33 @@ router.get(
       );
 
 
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
+      return res.status(500).json({
 
-          error:
-            error?.message ||
-            "Unable to load conversion history.",
-        });
+        success: false,
+
+        error:
+          error?.message ||
+          "Unable to load conversion history.",
+
+      });
+
     }
+
   }
 );
 
 
 /* ============================================================
    PATCH /extract/conversion-history/:id/favorite
+   UPDATE FAVORITE STATUS
 ============================================================ */
 
 router.patch(
   "/conversion-history/:id/favorite",
 
-  async (
-    req,
-    res
-  ) => {
+  requireFirebaseAuth,
+
+  async (req, res) => {
 
     try {
 
@@ -2080,12 +2077,10 @@ router.patch(
         req.params.id;
 
       const firebaseUid =
-        req.body
-          ?.firebase_uid;
+        req.firebaseUser.uid;
 
       const isFavorite =
-        req.body
-          ?.is_favorite;
+        req.body?.is_favorite;
 
 
       /* ========================================================
@@ -2094,43 +2089,18 @@ router.patch(
 
       if (
         !recordId ||
-        String(recordId)
-          .trim()
-          .length === 0
+        String(recordId).trim().length === 0
       ) {
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
+        return res.status(400).json({
 
-            error:
-              "Missing conversion history record id.",
-          });
-      }
+          success: false,
 
+          error:
+            "Missing conversion history record id.",
 
-      /* ========================================================
-         VALIDATE USER
-      ======================================================== */
+        });
 
-      if (
-        !firebaseUid ||
-        String(firebaseUid)
-          .trim()
-          .length === 0
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "Missing firebase_uid.",
-          });
       }
 
 
@@ -2139,46 +2109,43 @@ router.patch(
       ======================================================== */
 
       if (
-        typeof isFavorite !==
-        "boolean"
+        typeof isFavorite !== "boolean"
       ) {
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
+        return res.status(400).json({
 
-            error:
-              "is_favorite must be a boolean.",
-          });
+          success: false,
+
+          error:
+            "is_favorite must be a boolean.",
+
+        });
+
       }
 
 
       /* ========================================================
-         UPDATE ONLY THIS USER'S RECORD
+         UPDATE ONLY AUTHENTICATED USER'S RECORD
       ======================================================== */
 
       const {
         data,
         error,
       } = await supabase
-        .from(
-          "conversion_history"
-        )
+        .from("conversion_history")
         .update({
+
           is_favorite:
             isFavorite,
+
         })
         .eq(
           "id",
-          String(recordId)
-            .trim()
+          String(recordId).trim()
         )
         .eq(
           "firebase_uid",
-          String(firebaseUid)
-            .trim()
+          firebaseUid
         )
         .select(
           "id, firebase_uid, timestamp, input_file_name, output_file_name, processing_mode, document_type, status, is_favorite, content"
@@ -2193,20 +2160,20 @@ router.patch(
         );
 
 
-        return res
-          .status(500)
-          .json({
-            success:
-              false,
+        return res.status(500).json({
 
-            error:
-              "Unable to update favorite status.",
-          });
+          success: false,
+
+          error:
+            "Unable to update favorite status.",
+
+        });
+
       }
 
 
       /* ========================================================
-         RECORD NOT FOUND / DOES NOT BELONG TO USER
+         RECORD NOT FOUND
       ======================================================== */
 
       if (
@@ -2214,15 +2181,15 @@ router.patch(
         data.length === 0
       ) {
 
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
+        return res.status(404).json({
 
-            error:
-              "Conversion history record not found or does not belong to this user.",
-          });
+          success: false,
+
+          error:
+            "Conversion history record not found or does not belong to this user.",
+
+        });
+
       }
 
 
@@ -2230,12 +2197,9 @@ router.patch(
         "Favorite status updated:",
         {
           recordId:
-            String(recordId)
-              .trim(),
+            String(recordId).trim(),
 
-          firebaseUid:
-            String(firebaseUid)
-              .trim(),
+          firebaseUid,
 
           isFavorite,
         }
@@ -2243,23 +2207,20 @@ router.patch(
 
 
       /* ========================================================
-         SUCCESS
+         SUCCESS RESPONSE
       ======================================================== */
 
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
+      return res.status(200).json({
 
-          record:
-            data[0],
-        });
+        success: true,
+
+        record:
+          data[0],
+
+      });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "Favorite update route error:",
@@ -2267,32 +2228,33 @@ router.patch(
       );
 
 
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
+      return res.status(500).json({
 
-          error:
-            error?.message ||
-            "Unable to update favorite status.",
-        });
+        success: false,
+
+        error:
+          error?.message ||
+          "Unable to update favorite status.",
+
+      });
+
     }
+
   }
 );
 
 
 /* ============================================================
    DELETE /extract/conversion-history/:id
+   DELETE INDIVIDUAL HISTORY RECORD
 ============================================================ */
 
 router.delete(
   "/conversion-history/:id",
 
-  async (
-    req,
-    res
-  ) => {
+  requireFirebaseAuth,
+
+  async (req, res) => {
 
     try {
 
@@ -2300,76 +2262,49 @@ router.delete(
         req.params.id;
 
       const firebaseUid =
-        req.query.firebase_uid;
+        req.firebaseUser.uid;
 
 
       /* ========================================================
-         VALIDATE REQUEST
+         VALIDATE RECORD ID
       ======================================================== */
 
       if (
         !recordId ||
-        String(recordId)
-          .trim()
-          .length === 0
+        String(recordId).trim().length === 0
       ) {
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
+        return res.status(400).json({
 
-            error:
-              "Missing conversion history record id.",
-          });
-      }
+          success: false,
 
+          error:
+            "Missing conversion history record id.",
 
-      if (
-        !firebaseUid ||
-        String(firebaseUid)
-          .trim()
-          .length === 0
-      ) {
+        });
 
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            error:
-              "Missing firebase_uid.",
-          });
       }
 
 
       /* ========================================================
-         DELETE ONLY THIS USER'S RECORD
+         DELETE ONLY AUTHENTICATED USER'S RECORD
       ======================================================== */
 
       const {
         data,
         error,
       } = await supabase
-        .from(
-          "conversion_history"
-        )
+        .from("conversion_history")
         .delete()
         .eq(
           "id",
-          String(recordId)
-            .trim()
+          String(recordId).trim()
         )
         .eq(
           "firebase_uid",
-          String(firebaseUid)
-            .trim()
+          firebaseUid
         )
-        .select(
-          "id"
-        );
+        .select("id");
 
 
       if (error) {
@@ -2380,20 +2315,20 @@ router.delete(
         );
 
 
-        return res
-          .status(500)
-          .json({
-            success:
-              false,
+        return res.status(500).json({
 
-            error:
-              "Unable to delete conversion history.",
-          });
+          success: false,
+
+          error:
+            "Unable to delete conversion history.",
+
+        });
+
       }
 
 
       /* ========================================================
-         RECORD NOT FOUND / DOES NOT BELONG TO USER
+         RECORD NOT FOUND
       ======================================================== */
 
       if (
@@ -2401,15 +2336,15 @@ router.delete(
         data.length === 0
       ) {
 
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
+        return res.status(404).json({
 
-            error:
-              "Conversion history record not found or does not belong to this user.",
-          });
+          success: false,
+
+          error:
+            "Conversion history record not found or does not belong to this user.",
+
+        });
+
       }
 
 
@@ -2420,23 +2355,20 @@ router.delete(
 
 
       /* ========================================================
-         SUCCESS
+         SUCCESS RESPONSE
       ======================================================== */
 
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
+      return res.status(200).json({
 
-          deletedId:
-            data[0].id,
-        });
+        success: true,
+
+        deletedId:
+          data[0].id,
+
+      });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "Conversion history delete route error:",
@@ -2444,19 +2376,21 @@ router.delete(
       );
 
 
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
+      return res.status(500).json({
 
-          error:
-            error?.message ||
-            "Unable to delete conversion history.",
-        });
+        success: false,
+
+        error:
+          error?.message ||
+          "Unable to delete conversion history.",
+
+      });
+
     }
+
   }
 );
+
 
 /* ============================================================
    DELETE DATAEXTRACT ACCOUNT DATA
@@ -2465,37 +2399,19 @@ router.delete(
 
 router.delete(
   "/delete",
+
+  requireFirebaseAuth,
+
   async (req, res) => {
+
     try {
+
       const firebaseUid =
-        req.body?.firebase_uid;
+        req.firebaseUser.uid;
 
-      /* ========================================================
-         VALIDATE USER
-      ======================================================== */
-
-      if (
-        !firebaseUid ||
-        String(firebaseUid).trim().length === 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: "Missing firebase_uid.",
-          });
-      }
-
-      const uid =
-        String(firebaseUid).trim();
 
       console.log(
         "=== DATAEXTRACT ACCOUNT DELETE REQUEST ==="
-      );
-
-      console.log(
-        "Firebase UID supplied:",
-        Boolean(uid)
       );
 
 
@@ -2508,21 +2424,29 @@ router.delete(
       } = await supabase
         .from("conversion_history")
         .delete()
-        .eq("firebase_uid", uid);
+        .eq(
+          "firebase_uid",
+          firebaseUid
+        );
+
 
       if (historyError) {
+
         console.error(
           "Account delete - conversion_history error:",
           historyError
         );
 
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error:
-              "Unable to delete conversion history.",
-          });
+
+        return res.status(500).json({
+
+          success: false,
+
+          error:
+            "Unable to delete conversion history.",
+
+        });
+
       }
 
 
@@ -2535,48 +2459,66 @@ router.delete(
       } = await supabase
         .from("usage")
         .delete()
-        .eq("firebase_uid", uid);
+        .eq(
+          "firebase_uid",
+          firebaseUid
+        );
+
 
       if (usageError) {
+
         console.error(
           "Account delete - usage error:",
           usageError
         );
 
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error:
-              "Unable to delete usage data.",
-          });
+
+        return res.status(500).json({
+
+          success: false,
+
+          error:
+            "Unable to delete usage data.",
+
+        });
+
       }
 
-        /* ============================================================
-           DELETE FEEDBACK
-        ============================================================ */
+
+      /* ========================================================
+         DELETE FEEDBACK
+      ======================================================== */
 
       const {
         error: feedbackError,
       } = await supabase
         .from("feedback")
         .delete()
-        .eq("firebase_uid", uid);
+        .eq(
+          "firebase_uid",
+          firebaseUid
+        );
+
 
       if (feedbackError) {
+
         console.error(
           "Account delete - feedback error:",
           feedbackError
         );
 
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error:
-              "Unable to delete feedback data.",
-          });
+
+        return res.status(500).json({
+
+          success: false,
+
+          error:
+            "Unable to delete feedback data.",
+
+        });
+
       }
+
 
       /* ========================================================
          DELETE SUBSCRIPTION RECORD
@@ -2587,61 +2529,77 @@ router.delete(
       } = await supabase
         .from("subscriptions")
         .delete()
-        .eq("firebase_uid", uid);
+        .eq(
+          "firebase_uid",
+          firebaseUid
+        );
+
 
       if (subscriptionError) {
+
         console.error(
           "Account delete - subscriptions error:",
           subscriptionError
         );
 
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error:
-              "Unable to delete subscription data.",
-          });
+
+        return res.status(500).json({
+
+          success: false,
+
+          error:
+            "Unable to delete subscription data.",
+
+        });
+
       }
 
 
       /* ========================================================
-         SUCCESS
+         SUCCESS RESPONSE
       ======================================================== */
 
       console.log(
         "DataExtract account data deleted successfully."
       );
 
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message:
-            "DataExtract account data deleted successfully.",
-        });
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          "DataExtract account data deleted successfully.",
+
+      });
+
 
     } catch (error) {
+
       console.error(
         "Account delete route error:",
         error
       );
 
-      return res
-        .status(500)
-        .json({
-          success: false,
-          error:
-            error?.message ||
-            "Unable to delete account data.",
-        });
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          error?.message ||
+          "Unable to delete account data.",
+
+      });
+
     }
+
   }
 );
+
 
 /* ============================================================
    EXPORT ROUTER
 ============================================================ */
 
-module.exports =
-  router;
+module.exports = router;
