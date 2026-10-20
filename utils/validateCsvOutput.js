@@ -1,39 +1,31 @@
 /**
+ * ============================================================
+ * DataExtract AI
  * validateCsvOutput.js
  *
- * DataExtract AI adaptive financial CSV validator.
+ * UNIVERSAL + FINANCIAL CSV VALIDATION ENGINE
  *
- * Supports document-aware financial schemas:
+ * Supports:
+ * - Universal document extraction
+ * - Dynamic column generation
+ * - Financial document schemas
+ * - CSV parsing and serialization
+ * - Monetary validation
+ * - Empty-row detection
+ * - Document-aware validation
  *
- * - bank_statement
- * - invoice
- * - medical_bill
- * - receipt
- * - generic_financial
- *
- * Also provides:
- *
- * - standards-compliant CSV parsing
- * - CSV serialization
- * - monetary validation
- * - monetary normalization
- * - short-row detection
- * - long-row detection
- * - duplicate-header removal
- * - Markdown fence cleanup
+ * ============================================================
  */
 
 
 /* ============================================================
-   ADAPTIVE FINANCIAL SCHEMAS
+   FINANCIAL DOCUMENT SCHEMAS
 ============================================================ */
 
 const FINANCIAL_SCHEMAS = {
-  /* ==========================================================
-     BANK STATEMENT
-  ========================================================== */
 
   bank_statement: {
+
     documentType: "bank_statement",
 
     header: [
@@ -63,14 +55,12 @@ const FINANCIAL_SCHEMAS = {
       "Total Deposits",
       "Total Withdrawals",
     ],
+
   },
 
 
-  /* ==========================================================
-     INVOICE
-  ========================================================== */
-
   invoice: {
+
     documentType: "invoice",
 
     header: [
@@ -103,14 +93,12 @@ const FINANCIAL_SCHEMAS = {
       "Amount Paid",
       "Amount Due",
     ],
+
   },
 
 
-  /* ==========================================================
-     MEDICAL BILL / EOB
-  ========================================================== */
-
   medical_bill: {
+
     documentType: "medical_bill",
 
     header: [
@@ -147,14 +135,12 @@ const FINANCIAL_SCHEMAS = {
       "Total Patient Responsibility",
       "Amount Due",
     ],
+
   },
 
 
-  /* ==========================================================
-     RECEIPT
-  ========================================================== */
-
   receipt: {
+
     documentType: "receipt",
 
     header: [
@@ -183,14 +169,12 @@ const FINANCIAL_SCHEMAS = {
       "Subtotal",
       "Total Amount",
     ],
+
   },
 
 
-  /* ==========================================================
-     GENERIC FINANCIAL
-  ========================================================== */
-
   generic_financial: {
+
     documentType: "generic_financial",
 
     header: [
@@ -217,19 +201,22 @@ const FINANCIAL_SCHEMAS = {
       "Amount Due",
       "Balance",
     ],
+
   },
+
 };
 
 
 /* ============================================================
-   LEGACY HEADER
+   SUPPORTED FINANCIAL TYPES
+============================================================ */
 
-   Temporary compatibility export.
+const SUPPORTED_FINANCIAL_DOCUMENT_TYPES =
+  new Set(Object.keys(FINANCIAL_SCHEMAS));
 
-   routes/extraction.js currently imports HEADER.
 
-   File 3 will remove that dependency and use the adaptive
-   schema returned by getFinancialSchema().
+/* ============================================================
+   LEGACY COMPATIBILITY
 ============================================================ */
 
 const HEADER = [
@@ -256,8 +243,7 @@ const HEADER = [
   "Issuer Mailing Address",
 ];
 
-const EXPECTED_COLUMNS =
-  HEADER.length;
+const EXPECTED_COLUMNS = HEADER.length;
 
 const MONETARY_COLUMNS = [
   "Gross Amount",
@@ -275,24 +261,11 @@ const MONETARY_COLUMNS = [
 
 
 /* ============================================================
-   SUPPORTED FINANCIAL DOCUMENT TYPES
-============================================================ */
-
-const SUPPORTED_FINANCIAL_DOCUMENT_TYPES =
-  new Set(
-    Object.keys(
-      FINANCIAL_SCHEMAS
-    )
-  );
-
-
-/* ============================================================
-   NORMALIZE DOCUMENT TYPE
+   NORMALIZE FINANCIAL DOCUMENT TYPE
 ============================================================ */
 
 function normalizeDocumentType(documentType) {
 
-  // Reject missing or empty document classifications.
   if (
     documentType == null ||
     String(documentType).trim() === ""
@@ -300,28 +273,20 @@ function normalizeDocumentType(documentType) {
     return "unsupported_document";
   }
 
-  // Normalize the document classification.
   const normalized = String(documentType)
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
-  // Explicitly recognize unsupported documents.
-  if (normalized === "unsupported_document") {
-    return "unsupported_document";
-  }
-
-  // Preserve all five supported financial classifications.
   if (
     SUPPORTED_FINANCIAL_DOCUMENT_TYPES.has(normalized)
   ) {
     return normalized;
   }
 
-  // Never automatically classify unknown documents
-  // as generic financial documents.
   return "unsupported_document";
 }
+
 
 /* ============================================================
    GET FINANCIAL SCHEMA
@@ -329,29 +294,22 @@ function normalizeDocumentType(documentType) {
 
 function getFinancialSchema(documentType) {
 
-  // Normalize the document classification.
   const normalizedType =
     normalizeDocumentType(documentType);
 
-  // Reject unsupported document classifications.
-  if (normalizedType === "unsupported_document") {
-    throw new Error(
-      "Unsupported document type. No financial schema available."
-    );
-  }
+  const schema =
+    FINANCIAL_SCHEMAS[normalizedType];
 
-  // Retrieve the matching financial schema.
-  const schema = FINANCIAL_SCHEMAS[normalizedType];
-
-  // Prevent unknown classifications from using a fallback schema.
   if (!schema) {
+
     throw new Error(
-      `No financial schema found for document type: ${normalizedType}`
+      `No financial schema available for: ${documentType}`
     );
+
   }
 
-  // Preserve the existing schema response structure.
   return {
+
     documentType: schema.documentType,
 
     header: [...schema.header],
@@ -359,369 +317,190 @@ function getFinancialSchema(documentType) {
     monetaryColumns: [...schema.monetaryColumns],
 
     expectedColumns: schema.header.length,
+
   };
+
 }
+
+
+/* ============================================================
+   NORMALIZE UNIVERSAL DOCUMENT TYPE
+============================================================ */
+
+function normalizeUniversalDocumentType(documentType) {
+
+  if (
+    documentType == null ||
+    String(documentType).trim() === ""
+  ) {
+    return "unsupported_document";
+  }
+
+  return String(documentType)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") ||
+    "unsupported_document";
+
+}
+
+
+/* ============================================================
+   CSV SERIALIZATION
+============================================================ */
+
+function toCsvLine(fields) {
+
+  if (!Array.isArray(fields)) {
+    throw new Error("CSV fields must be an array.");
+  }
+
+  return fields.map((field) => {
+
+    const value =
+      field == null ? "" : String(field);
+
+    if (/[",\r\n]/.test(value)) {
+
+      return (
+        '"' +
+        value.replace(/"/g, '""') +
+        '"'
+      );
+
+    }
+
+    return value;
+
+  }).join(",");
+
+}
+
 
 /* ============================================================
    CSV PARSER
 ============================================================ */
 
-/**
- * Parse an entire CSV string.
- *
- * Supports:
- *
- * - quoted fields
- * - commas inside quoted fields
- * - escaped double quotes
- * - CRLF / LF
- * - line breaks inside quoted fields
- *
- * @param {string} csvText
- *
- * @returns {{
- *   rows: string[][],
- *   unterminatedQuote: boolean
- * }}
- */
-function parseCsvRows(
-  csvText
-) {
+function parseCsvRows(csvText) {
+
+  const text = String(csvText ?? "");
+
   const rows = [];
 
   let row = [];
   let field = "";
   let inQuotes = false;
 
-  const text =
-    csvText == null
-      ? ""
-      : String(csvText);
+  for (let i = 0; i < text.length; i++) {
 
-  for (
-    let i = 0;
-    i < text.length;
-    i++
-  ) {
-    const char =
-      text[i];
-
-    const nextChar =
-      text[i + 1];
-
-
-    /* ========================================================
-       INSIDE QUOTED FIELD
-    ======================================================== */
+    const char = text[i];
+    const next = text[i + 1];
 
     if (inQuotes) {
-      if (
-        char === '"' &&
-        nextChar === '"'
-      ) {
-        field += '"';
 
+      if (char === '"' && next === '"') {
+
+        field += '"';
         i++;
 
-        continue;
+      } else if (char === '"') {
+
+        inQuotes = false;
+
+      } else {
+
+        field += char;
+
       }
-
-
-      if (
-        char === '"'
-      ) {
-        inQuotes =
-          false;
-
-        continue;
-      }
-
-
-      field += char;
 
       continue;
     }
 
+    if (char === '"') {
 
-    /* ========================================================
-       OUTSIDE QUOTED FIELD
-    ======================================================== */
+      inQuotes = true;
 
-    if (
-      char === '"'
-    ) {
-      inQuotes =
-        true;
+    } else if (char === ",") {
 
-      continue;
-    }
-
-
-    if (
-      char === ","
-    ) {
-      row.push(
-        field
-      );
-
+      row.push(field);
       field = "";
 
-      continue;
-    }
-
-
-    if (
+    } else if (
       char === "\n" ||
       char === "\r"
     ) {
-      /*
-       * Treat Windows CRLF as one newline.
-       */
-      if (
-        char === "\r" &&
-        nextChar === "\n"
-      ) {
+
+      if (char === "\r" && next === "\n") {
         i++;
       }
 
-
-      row.push(
-        field
-      );
-
-
-      const hasContent =
-        row.some(
-          (value) =>
-            String(
-              value
-            )
-              .trim()
-              .length >
-            0
-        );
-
+      row.push(field);
 
       if (
-        hasContent
+        row.some(
+          (value) => String(value).trim() !== ""
+        )
       ) {
-        rows.push(
-          row
-        );
+        rows.push(row);
       }
 
-
       row = [];
-
       field = "";
 
-      continue;
+    } else {
+
+      field += char;
+
     }
 
-
-    field += char;
   }
 
-
-  /* ============================================================
-     FINAL FIELD / ROW
-  ============================================================ */
-
-  row.push(
-    field
-  );
-
-
-  const hasFinalContent =
-    row.some(
-      (value) =>
-        String(
-          value
-        )
-          .trim()
-          .length >
-        0
-    );
-
+  row.push(field);
 
   if (
-    hasFinalContent
+    row.some(
+      (value) => String(value).trim() !== ""
+    )
   ) {
-    rows.push(
-      row
-    );
+    rows.push(row);
   }
-
 
   return {
     rows,
-
-    unterminatedQuote:
-      inQuotes,
+    unterminatedQuote: inQuotes,
   };
+
 }
 
 
 /* ============================================================
-   PARSE SINGLE CSV ROW
+   PARSE SINGLE CSV LINE
 ============================================================ */
 
-function parseCsvLine(
-  line
-) {
-  const parsed =
-    parseCsvRows(
-      line
-    );
+function parseCsvLine(line) {
 
-  return (
-    parsed.rows[0] ||
-    []
-  );
+  const parsed = parseCsvRows(line);
+
+  return parsed.rows[0] || [];
+
 }
 
 
 /* ============================================================
-   CSV SERIALIZER
+   REMOVE MARKDOWN FENCES
 ============================================================ */
 
-/**
- * Serialize one row as standards-compliant CSV.
- *
- * Fields containing:
- *
- * - comma
- * - quote
- * - CR
- * - LF
- *
- * are wrapped in double quotes.
- */
-function toCsvLine(
-  fields
-) {
-  return fields
-    .map(
-      (field) => {
+function removeMarkdownFences(text) {
 
-        const value =
-          field == null
-            ? ""
-            : String(
-                field
-              );
-
-
-        if (
-          /[",\r\n]/
-            .test(value)
-        ) {
-          return (
-            '"' +
-            value.replace(
-              /"/g,
-              '""'
-            ) +
-            '"'
-          );
-        }
-
-
-        return value;
-      }
-    )
-    .join(",");
-}
-
-
-/* ============================================================
-   NORMALIZATION HELPERS
-============================================================ */
-
-function normalizeFields(
-  fields
-) {
-  return fields.map(
-    (field) =>
-      String(
-        field ?? ""
-      )
-        .trim()
-        .toLowerCase()
-  );
-}
-
-
-/* ============================================================
-   HEADER CHECK
-============================================================ */
-
-function isHeaderRow(
-  fields,
-  expectedHeader
-) {
-  if (
-    !Array.isArray(
-      expectedHeader
-    )
-  ) {
-    return false;
-  }
-
-
-  if (
-    fields.length !==
-    expectedHeader.length
-  ) {
-    return false;
-  }
-
-
-  const normalized =
-    normalizeFields(
-      fields
-    );
-
-
-  const expected =
-    normalizeFields(
-      expectedHeader
-    );
-
-
-  return normalized.every(
-    (
-      field,
-      index
-    ) =>
-      field ===
-      expected[index]
-  );
-}
-
-
-/* ============================================================
-   MARKDOWN CLEANUP
-============================================================ */
-
-function removeMarkdownFences(
-  text
-) {
-  return String(
-    text ?? ""
-  )
-    .split(
-      /\r?\n/
-    )
+  return String(text ?? "")
+    .split(/\r?\n/)
     .filter(
       (line) =>
-        !line
-          .trim()
-          .startsWith(
-            "```"
-          )
+        !line.trim().startsWith("```")
     )
     .join("\n");
+
 }
 
 
@@ -729,126 +508,70 @@ function removeMarkdownFences(
    MONETARY VALIDATION
 ============================================================ */
 
-/**
- * Valid:
- *
- * 858.44
- * -236.00
- * 0.00
- * 593
- * -4.56
- *
- * Invalid:
- *
- * $858.44
- * USD 858.44
- * 858.44 dollars
- *
- * Empty values are valid.
- */
-function isValidMonetaryValue(
-  value
-) {
+function isValidMonetaryValue(value) {
+
   const normalized =
-    String(
-      value ?? ""
-    )
-      .trim();
+    String(value ?? "").trim();
 
-
-  if (
-    normalized === ""
-  ) {
+  if (normalized === "") {
     return true;
   }
 
+  return /^-?\d+(?:\.\d{1,2})?$/.test(
+    normalized
+  );
 
-  return /^-?\d+(?:\.\d{1,2})?$/
-    .test(
-      normalized
-    );
 }
 
 
 /* ============================================================
-   NORMALIZE MONETARY VALUE
+   MONETARY NORMALIZATION
 ============================================================ */
 
-function normalizeMonetaryValue(
-  value
-) {
+function normalizeMonetaryValue(value) {
+
   const normalized =
-    String(
-      value ?? ""
-    )
-      .trim();
+    String(value ?? "").trim();
 
-
-  if (
-    normalized === ""
-  ) {
+  if (normalized === "") {
     return "";
   }
 
-
-  if (
-    !isValidMonetaryValue(
-      normalized
-    )
-  ) {
+  if (!isValidMonetaryValue(normalized)) {
     return normalized;
   }
 
+  const number = Number(normalized);
 
-  const numericValue =
-    Number(
-      normalized
-    );
-
-
-  if (
-    !Number.isFinite(
-      numericValue
-    )
-  ) {
+  if (!Number.isFinite(number)) {
     return normalized;
   }
 
+  return number.toFixed(2);
 
-  return numericValue
-    .toFixed(2);
 }
 
 
 /* ============================================================
-   GET MONETARY COLUMN INDEXES
+   MONETARY COLUMN INDEXES
 ============================================================ */
 
 function getMonetaryColumnIndexes(
   header,
   monetaryColumns
 ) {
+
   if (
     !Array.isArray(header) ||
-    !Array.isArray(
-      monetaryColumns
-    )
+    !Array.isArray(monetaryColumns)
   ) {
     return [];
   }
 
-
   return monetaryColumns
-    .map(
-      (columnName) =>
-        header.indexOf(
-          columnName
-        )
-    )
-    .filter(
-      (index) =>
-        index >= 0
-    );
+    .map((column) => header.indexOf(column))
+    .filter((index) => index >= 0);
+
 }
 
 
@@ -863,551 +586,829 @@ function validateMonetaryFields(
   header,
   monetaryColumns
 ) {
-  const normalizedFields =
-    [...fields];
 
+  const normalizedFields = [...fields];
 
-  const monetaryIndexes =
-    getMonetaryColumnIndexes(
-      header,
-      monetaryColumns
-    );
+  const indexes = getMonetaryColumnIndexes(
+    header,
+    monetaryColumns
+  );
 
+  for (const index of indexes) {
 
-  monetaryIndexes
-    .forEach(
-      (columnIndex) => {
+    const value = normalizedFields[index];
 
-        const value =
-          normalizedFields[
-            columnIndex
-          ];
+    if (!isValidMonetaryValue(value)) {
 
+      errors.push(
+        `Row ${lineNumber}: invalid monetary value ` +
+        `"${value}" in "${header[index]}".`
+      );
 
-        const columnName =
-          header[
-            columnIndex
-          ];
+      continue;
+    }
 
+    normalizedFields[index] =
+      normalizeMonetaryValue(value);
 
-        if (
-          !isValidMonetaryValue(
-            value
-          )
-        ) {
-          errors.push(
-            `Row ${lineNumber}: invalid monetary value "${value}" ` +
-            `in "${columnName}". Expected numeric value without currency symbols.`
-          );
-
-          return;
-        }
-
-
-        normalizedFields[
-          columnIndex
-        ] =
-          normalizeMonetaryValue(
-            value
-          );
-      }
-    );
-
+  }
 
   return normalizedFields;
+
 }
 
 
 /* ============================================================
-   BUILD CSV FROM JSON ROWS
+   END OF PART 1
 ============================================================ */
 
-/**
- * Convert structured JSON rows to CSV according
- * to the selected document schema.
- *
- * @param {object[]} rows
- * @param {string} documentType
- *
- * @returns {string}
- */
-function structuredRowsToCsv(
-  rows,
-  documentType
-) {
-  const schema =
-    getFinancialSchema(
-      documentType
+/* ============================================================
+   UNIVERSAL EXTRACTION VALIDATION
+============================================================ */
+
+function validateUniversalExtraction(extraction) {
+
+  const errors = [];
+
+  if (
+    !extraction ||
+    typeof extraction !== "object" ||
+    Array.isArray(extraction)
+  ) {
+
+    return {
+      valid: false,
+      documentType: "unsupported_document",
+      columns: [],
+      rows: [],
+      errors: [
+        "Universal extraction must be a JSON object."
+      ],
+    };
+
+  }
+
+  const documentType =
+    normalizeUniversalDocumentType(
+      extraction.documentType
     );
 
+  const columns = extraction.columns;
+  const rows = extraction.rows;
 
-  const safeRows =
-    Array.isArray(rows)
-      ? rows
-      : [];
+  if (documentType === "unsupported_document") {
 
+    return {
+      valid: false,
+      documentType,
+      columns: [],
+      rows: [],
+      errors: [
+        "No supported structured information was extracted."
+      ],
+    };
 
-  const csvRows =
-    safeRows.map(
-      (item) => {
+  }
 
-        const fields =
-          schema.header.map(
-            (column) => {
+  if (!Array.isArray(columns)) {
 
-              const value =
-                item?.[
-                  column
-                ];
+    errors.push(
+      "The extraction must contain a columns array."
+    );
 
+  }
 
-              return value == null
-                ? ""
-                : String(
-                    value
-                  );
-            }
-          );
+  if (!Array.isArray(rows)) {
 
+    errors.push(
+      "The extraction must contain a rows array."
+    );
 
-        return toCsvLine(
-          fields
+  }
+
+  if (errors.length > 0) {
+
+    return {
+      valid: false,
+      documentType,
+      columns: [],
+      rows: [],
+      errors,
+    };
+
+  }
+
+  if (columns.length === 0) {
+
+    errors.push(
+      "No columns were identified."
+    );
+
+  }
+
+  if (rows.length === 0) {
+
+    errors.push(
+      "No meaningful data rows were extracted."
+    );
+
+  }
+
+  const normalizedColumns = columns.map(
+    (column) => String(column ?? "").trim()
+  );
+
+  const seenColumns = new Set();
+
+  for (let i = 0; i < normalizedColumns.length; i++) {
+
+    const column = normalizedColumns[i];
+
+    if (column === "") {
+
+      errors.push(
+        `Column ${i + 1} has an empty name.`
+      );
+
+      continue;
+
+    }
+
+    if (seenColumns.has(column)) {
+
+      errors.push(
+        `Duplicate column name: "${column}".`
+      );
+
+    }
+
+    seenColumns.add(column);
+
+  }
+
+  const normalizedRows = [];
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+
+    const row = rows[rowIndex];
+
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row)
+    ) {
+
+      errors.push(
+        `Row ${rowIndex + 1} must be a JSON object.`
+      );
+
+      continue;
+
+    }
+
+    const rowKeys = Object.keys(row);
+
+    const missingColumns = normalizedColumns.filter(
+      (column) =>
+        !Object.prototype.hasOwnProperty.call(
+          row,
+          column
+        )
+    );
+
+    const extraColumns = rowKeys.filter(
+      (key) => !seenColumns.has(key)
+    );
+
+    if (missingColumns.length > 0) {
+
+      errors.push(
+        `Row ${rowIndex + 1} is missing columns: ` +
+        missingColumns.join(", ")
+      );
+
+    }
+
+    if (extraColumns.length > 0) {
+
+      errors.push(
+        `Row ${rowIndex + 1} contains unexpected columns: ` +
+        extraColumns.join(", ")
+      );
+
+    }
+
+    if (
+      missingColumns.length > 0 ||
+      extraColumns.length > 0
+    ) {
+      continue;
+    }
+
+    const normalizedRow = {};
+
+    let meaningfulCells = 0;
+
+    for (const column of normalizedColumns) {
+
+      const value = row[column];
+
+      if (
+        value !== null &&
+        typeof value === "object"
+      ) {
+
+        errors.push(
+          `Row ${rowIndex + 1}, column "${column}" ` +
+          "must contain a scalar value."
         );
+
+        continue;
+
+      }
+
+      const normalizedValue =
+        value == null ? "" : String(value).trim();
+
+      normalizedRow[column] = normalizedValue;
+
+      if (normalizedValue !== "") {
+        meaningfulCells++;
+      }
+
+    }
+
+    if (meaningfulCells === 0) {
+
+      errors.push(
+        `Row ${rowIndex + 1} contains no meaningful data.`
+      );
+
+      continue;
+
+    }
+
+    normalizedRows.push(normalizedRow);
+
+  }
+
+  return {
+    valid: errors.length === 0,
+    documentType,
+    columns: normalizedColumns,
+    rows: normalizedRows,
+    errors,
+  };
+
+}
+
+
+/* ============================================================
+   UNIVERSAL STRUCTURED ROWS TO CSV
+============================================================ */
+
+function universalRowsToCsv(extraction) {
+
+  const validation =
+    validateUniversalExtraction(extraction);
+
+  if (!validation.valid) {
+
+    throw new Error(
+      "Universal extraction validation failed: " +
+      validation.errors.join("; ")
+    );
+
+  }
+
+  const { columns, rows } = validation;
+
+  const csvLines = [
+    toCsvLine(columns),
+  ];
+
+  for (const row of rows) {
+
+    csvLines.push(
+      toCsvLine(
+        columns.map(
+          (column) => row[column]
+        )
+      )
+    );
+
+  }
+
+  return csvLines.join("\r\n");
+
+}
+
+
+/* ============================================================
+   FINANCIAL STRUCTURED ROWS TO CSV
+============================================================ */
+
+function structuredRowsToCsv(
+  rows,
+  documentType = "generic_financial"
+) {
+
+  if (!Array.isArray(rows)) {
+
+    throw new Error(
+      "Financial rows must be an array."
+    );
+
+  }
+
+  const schema =
+    getFinancialSchema(documentType);
+
+  const csvLines = [
+    toCsvLine(schema.header),
+  ];
+
+  for (const row of rows) {
+
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row)
+    ) {
+
+      throw new Error(
+        "Each financial row must be an object."
+      );
+
+    }
+
+    const fields = schema.header.map(
+      (column) => {
+
+        const value = row[column];
+
+        return value == null
+          ? ""
+          : String(value).trim();
+
       }
     );
 
+    csvLines.push(
+      toCsvLine(fields)
+    );
 
-  return [
-    toCsvLine(
-      schema.header
-    ),
+  }
 
-    ...csvRows,
-  ].join("\n");
+  return csvLines.join("\r\n");
+
 }
 
 
 /* ============================================================
-   MAIN ADAPTIVE CSV VALIDATOR
+   FINANCIAL CSV VALIDATION
 ============================================================ */
 
-/**
- * Validate and normalize financial CSV.
- *
- * @param {string} rawCsv
- *
- * @param {object} options
- *
- * @param {string} options.documentType
- *
- * @param {boolean}
- * options.padShortRows=true
- *
- * @returns {{
- *   valid: boolean,
- *   documentType: string,
- *   header: string[],
- *   expectedColumns: number,
- *   rows: string[][],
- *   cleanedCsv: string,
- *   errors: string[],
- *   flaggedRows: {
- *     lineNumber: number,
- *     original: string,
- *     fieldCount: number
- *   }[]
- * }}
- */
 function validateCsv(
   rawCsv,
   options = {}
 ) {
-  const {
-    documentType =
-      "generic_financial",
 
-    padShortRows =
-      true,
-  } = options;
+  const errors = [];
+  const flaggedRows = [];
 
-
-  const schema =
-    getFinancialSchema(
-      documentType
+  const documentType =
+    normalizeDocumentType(
+      options.documentType ||
+      "generic_financial"
     );
 
+  if (documentType === "unsupported_document") {
 
-  const header =
-    schema.header;
+    return {
+      valid: false,
+      documentType,
+      header: [],
+      expectedColumns: 0,
+      rows: [],
+      cleanedCsv: "",
+      errors: [
+        "Unsupported financial document type."
+      ],
+      flaggedRows,
+    };
 
+  }
 
-  const monetaryColumns =
-    schema.monetaryColumns;
+  const schema =
+    getFinancialSchema(documentType);
 
-
+  const header = schema.header;
   const expectedColumns =
     schema.expectedColumns;
 
+  const text = removeMarkdownFences(
+    rawCsv
+  ).trim();
 
-  const errors = [];
+  if (!text) {
 
-  const flaggedRows = [];
-
-  const rows = [];
-
-
-  /* ============================================================
-     EMPTY RESPONSE CHECK
-  ============================================================ */
-
-  if (
-    rawCsv == null ||
-    String(
-      rawCsv
-    )
-      .trim()
-      .length ===
-    0
-  ) {
     return {
-      valid:
-        false,
-
-      documentType:
-        schema.documentType,
-
+      valid: false,
+      documentType,
       header,
-
       expectedColumns,
-
-      rows:
-        [],
-
-      cleanedCsv:
-        "",
-
+      rows: [],
+      cleanedCsv: "",
       errors: [
-        "No content returned from extraction.",
+        "CSV output is empty."
       ],
-
-      flaggedRows:
-        [],
+      flaggedRows,
     };
+
   }
 
+  const parsed = parseCsvRows(text);
 
-  /* ============================================================
-     CLEAN INPUT
-  ============================================================ */
+  if (parsed.unterminatedQuote) {
 
-  const cleanedInput =
-    removeMarkdownFences(
-      rawCsv
-    );
-
-
-  /* ============================================================
-     PARSE CSV
-  ============================================================ */
-
-  const parsed =
-    parseCsvRows(
-      cleanedInput
-    );
-
-
-  if (
-    parsed.unterminatedQuote
-  ) {
     errors.push(
       "CSV contains an unterminated quoted field."
     );
+
   }
 
+  const parsedRows = parsed.rows;
 
-  if (
-    parsed.rows.length ===
-    0
+  if (parsedRows.length === 0) {
+
+    errors.push(
+      "CSV contains no rows."
+    );
+
+  }
+
+  const actualHeader =
+    parsedRows[0] || [];
+
+  const headerMatches =
+    actualHeader.length === header.length &&
+    actualHeader.every(
+      (value, index) =>
+        String(value).trim() === header[index]
+    );
+
+  if (!headerMatches) {
+
+    errors.push(
+      "CSV header does not match the required " +
+      `${documentType} schema.`
+    );
+
+  }
+
+  if (parsedRows.length <= 1) {
+
+    errors.push(
+      "CSV contains headers but no data rows."
+    );
+
+  }
+
+  const cleanedRows = [];
+
+  for (
+    let rowIndex = 1;
+    rowIndex < parsedRows.length;
+    rowIndex++
   ) {
-    return {
-      valid:
-        false,
 
-      documentType:
-        schema.documentType,
+    const originalFields =
+      [...parsedRows[rowIndex]];
 
-      header,
+    const lineNumber = rowIndex + 1;
 
-      expectedColumns,
-
-      rows:
-        [],
-
-      cleanedCsv:
-        "",
-
-      errors: [
-        "No CSV rows could be parsed from extraction output.",
-      ],
-
-      flaggedRows:
-        [],
-    };
-  }
-
-
-  /* ============================================================
-     PROCESS ROWS
-  ============================================================ */
-
-  parsed.rows.forEach(
-    (
-      originalFields,
-      index
-    ) => {
-
-      const lineNumber =
-        index + 1;
-
-
-      const fields =
-        originalFields.map(
-          (field) =>
-            String(
-              field
-            )
-              .replace(
-                /^\*\*(.*)\*\*$/,
-                "$1"
-              )
-              .replace(
-                /^__(.*)__$/,
-                "$1"
-              )
-        );
-
-
-      /* ========================================================
-         HEADER
-      ======================================================== */
-
-      if (
-        isHeaderRow(
-          fields,
-          header
-        )
-      ) {
-        /*
-         * Header is regenerated below.
-         */
-        return;
-      }
-
-
-      /* ========================================================
-         CORRECT FIELD COUNT
-      ======================================================== */
-
-      if (
-        fields.length ===
-        expectedColumns
-      ) {
-        const normalizedFields =
-          validateMonetaryFields(
-            fields,
-            lineNumber,
-            errors,
-            header,
-            monetaryColumns
-          );
-
-
-        rows.push(
-          normalizedFields
-        );
-
-
-        return;
-      }
-
-
-      /* ========================================================
-         FLAG INVALID FIELD COUNT
-      ======================================================== */
-
-      flaggedRows.push({
-        lineNumber,
-
-        original:
-          fields.join(","),
-
-        fieldCount:
-          fields.length,
-      });
-
-
-      /* ========================================================
-         SHORT ROW
-      ======================================================== */
-
-      if (
-        fields.length <
-        expectedColumns
-      ) {
-        errors.push(
-          `Row ${lineNumber}: expected ${expectedColumns} fields, ` +
-          `got ${fields.length}. Possible dropped blank field / column drift.`
-        );
-
-
-        if (
-          padShortRows
-        ) {
-          const padded =
-            [...fields];
-
-
-          while (
-            padded.length <
-            expectedColumns
-          ) {
-            padded.push("");
-          }
-
-
-          const normalizedFields =
-            validateMonetaryFields(
-              padded,
-              lineNumber,
-              errors,
-              header,
-              monetaryColumns
-            );
-
-
-          rows.push(
-            normalizedFields
-          );
-        }
-
-
-        return;
-      }
-
-
-      /* ========================================================
-         LONG ROW
-      ======================================================== */
+    if (
+      originalFields.length >
+      expectedColumns
+    ) {
 
       errors.push(
-        `Row ${lineNumber}: expected ${expectedColumns} fields, ` +
-        `got ${fields.length}. Possible malformed or unescaped field.`
+        `Row ${lineNumber} has too many columns. ` +
+        `Expected ${expectedColumns}, ` +
+        `received ${originalFields.length}.`
       );
 
-      /*
-       * Do not guess how extra fields should be merged.
-       * Incorrect merging could silently move financial values
-       * into the wrong columns.
-       */
+      flaggedRows.push({
+        rowNumber: lineNumber,
+        reason: "too_many_columns",
+      });
+
+      continue;
+
     }
-  );
 
-  /* ============================================================
-     VALIDATE EXTRACTED DATA ROWS
-  ============================================================ */
+    while (
+      originalFields.length <
+      expectedColumns
+    ) {
 
-  // Reject CSV output containing only column headers.
-  if (rows.length === 0) {
-    errors.push(
-      "Extraction failed: No data rows were extracted."
+      originalFields.push("");
+
+    }
+
+    const fields =
+      originalFields.map(
+        (value) => String(value ?? "").trim()
+      );
+
+    const meaningfulCells =
+      fields.filter(
+        (value) => value !== ""
+      ).length;
+
+    if (meaningfulCells === 0) {
+
+      errors.push(
+        `Row ${lineNumber} is empty.`
+      );
+
+      flaggedRows.push({
+        rowNumber: lineNumber,
+        reason: "empty_row",
+      });
+
+      continue;
+
+    }
+
+    const validatedFields =
+      validateMonetaryFields(
+        fields,
+        lineNumber,
+        errors,
+        header,
+        schema.monetaryColumns
+      );
+
+    cleanedRows.push(
+      validatedFields
     );
+
   }
 
-  // Check whether at least one row contains actual data.
-  const hasMeaningfulData = rows.some(
-    (row) =>
-      Array.isArray(row) &&
-      row.some(
-        (value) =>
-          String(value ?? "").trim().length > 0
-      )
-  );
+  if (cleanedRows.length === 0) {
 
-  if (rows.length > 0 && !hasMeaningfulData) {
     errors.push(
-      "Extraction failed: All extracted data rows are empty."
+      "No meaningful financial rows were extracted."
     );
+
   }
-   
-  /* ============================================================
-     BUILD CLEAN CSV
-  ============================================================ */
 
-  const cleanedCsv =
-    [
-      header,
-
-      ...rows,
-    ]
-      .map(
-        toCsvLine
-      )
-      .join("\n");
-
-
-  /* ============================================================
-     RESULT
-  ============================================================ */
+  const cleanedCsv = [
+    toCsvLine(header),
+    ...cleanedRows.map(toCsvLine),
+  ].join("\r\n");
 
   return {
-    valid:
-      errors.length ===
-      0,
-
-    documentType:
-      schema.documentType,
-
+    valid: errors.length === 0,
+    documentType,
     header,
-
     expectedColumns,
-
-    rows,
-
+    rows: cleanedRows,
     cleanedCsv,
-
     errors,
-
     flaggedRows,
   };
+
 }
 
 
 /* ============================================================
-   EXPORTS
+   UNIVERSAL CSV VALIDATION
+============================================================ */
+
+function validateUniversalCsv(
+  rawCsv,
+  options = {}
+) {
+
+  const errors = [];
+  const flaggedRows = [];
+
+  const documentType =
+    normalizeUniversalDocumentType(
+      options.documentType ||
+      "general_document"
+    );
+
+  const text = removeMarkdownFences(
+    rawCsv
+  ).trim();
+
+  if (!text) {
+
+    return {
+      valid: false,
+      documentType,
+      header: [],
+      expectedColumns: 0,
+      rows: [],
+      cleanedCsv: "",
+      errors: [
+        "Universal CSV output is empty."
+      ],
+      flaggedRows,
+    };
+
+  }
+
+  const parsed = parseCsvRows(text);
+
+  if (parsed.unterminatedQuote) {
+
+    errors.push(
+      "CSV contains an unterminated quoted field."
+    );
+
+  }
+
+  const parsedRows = parsed.rows;
+
+  const header =
+    (parsedRows[0] || []).map(
+      (value) => String(value).trim()
+    );
+
+  if (header.length === 0) {
+
+    errors.push(
+      "Universal CSV has no header columns."
+    );
+
+  }
+
+  const seenColumns = new Set();
+
+  for (const column of header) {
+
+    if (column === "") {
+
+      errors.push(
+        "Universal CSV contains an empty column name."
+      );
+
+    }
+
+    if (seenColumns.has(column)) {
+
+      errors.push(
+        `Duplicate CSV column: "${column}".`
+      );
+
+    }
+
+    seenColumns.add(column);
+
+  }
+
+  if (parsedRows.length <= 1) {
+
+    errors.push(
+      "Universal CSV contains no data rows."
+    );
+
+  }
+
+  const expectedColumns =
+    header.length;
+
+  const cleanedRows = [];
+
+  for (
+    let rowIndex = 1;
+    rowIndex < parsedRows.length;
+    rowIndex++
+  ) {
+
+    const fields =
+      parsedRows[rowIndex].map(
+        (value) => String(value ?? "").trim()
+      );
+
+    const lineNumber =
+      rowIndex + 1;
+
+    if (
+      fields.length !== expectedColumns
+    ) {
+
+      errors.push(
+        `Row ${lineNumber} contains ` +
+        `${fields.length} columns; ` +
+        `${expectedColumns} expected.`
+      );
+
+      flaggedRows.push({
+        rowNumber: lineNumber,
+        reason: "column_count_mismatch",
+      });
+
+      continue;
+
+    }
+
+    const meaningfulCells =
+      fields.filter(
+        (value) => value !== ""
+      ).length;
+
+    if (meaningfulCells === 0) {
+
+      errors.push(
+        `Row ${lineNumber} is empty.`
+      );
+
+      flaggedRows.push({
+        rowNumber: lineNumber,
+        reason: "empty_row",
+      });
+
+      continue;
+
+    }
+
+    cleanedRows.push(fields);
+
+  }
+
+  if (cleanedRows.length === 0) {
+
+    errors.push(
+      "Universal CSV contains no meaningful data rows."
+    );
+
+  }
+
+  const cleanedCsv = [
+    toCsvLine(header),
+    ...cleanedRows.map(toCsvLine),
+  ].join("\r\n");
+
+  return {
+    valid: errors.length === 0,
+    documentType,
+    header,
+    expectedColumns,
+    rows: cleanedRows,
+    cleanedCsv,
+    errors,
+    flaggedRows,
+  };
+
+}
+
+
+/* ============================================================
+   MODULE EXPORTS
 ============================================================ */
 
 module.exports = {
-  /* Adaptive schema API */
+
+  // Financial schemas
   FINANCIAL_SCHEMAS,
   SUPPORTED_FINANCIAL_DOCUMENT_TYPES,
-  normalizeDocumentType,
-  getFinancialSchema,
-  structuredRowsToCsv,
 
-  /* CSV utilities */
+  // Document classification
+  normalizeDocumentType,
+  normalizeUniversalDocumentType,
+
+  // Financial schema helpers
+  getFinancialSchema,
+
+  // CSV conversion
+  structuredRowsToCsv,
+  universalRowsToCsv,
+
+  // Validation
   validateCsv,
+  validateUniversalCsv,
+  validateUniversalExtraction,
+
+  // CSV utilities
   parseCsvLine,
   parseCsvRows,
   toCsvLine,
 
-  /* Monetary utilities */
+  // Monetary utilities
   isValidMonetaryValue,
   normalizeMonetaryValue,
   getMonetaryColumnIndexes,
   validateMonetaryFields,
 
-  /* Temporary legacy exports */
-EXPECTED_COLUMNS,
-HEADER,
-MONETARY_COLUMNS,
+  // Legacy compatibility
+  EXPECTED_COLUMNS,
+  HEADER,
+  MONETARY_COLUMNS,
+
 };
