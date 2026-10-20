@@ -31,11 +31,10 @@ const renderServiceAccountPath =
   "/etc/secrets/firebase-service-account.json";
 
 // Local Windows development file
+// Stored outside the project and OneDrive
+
 const localServiceAccountPath =
-  path.join(
-    __dirname,
-    "firebase-service-account.json"
-  );
+  "C:\\DataExtract-Secrets\\firebase-service-account.json";
 
 
 /* ============================================================
