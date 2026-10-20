@@ -8,6 +8,7 @@ const {
 
 const {
   getExtractionPrompt,
+  UNIVERSAL_EXTRACTION_PROMPT,
 } = require("../prompts/extractionPrompt");
 
 const checkUsageLimit =
@@ -18,6 +19,9 @@ const {
   structuredRowsToCsv,
   normalizeDocumentType,
   getFinancialSchema,
+  validateUniversalExtraction,
+  universalRowsToCsv,
+  validateUniversalCsv,
 } = require("../utils/validateCsvOutput");
 
 const {
@@ -115,17 +119,19 @@ const upload = multer({
 
 
 /* ============================================================
-   ADAPTIVE FINANCIAL OUTPUT MODES
+   UNIVERSAL AND FINANCIAL OUTPUT MODES
 ============================================================ */
 
-const FINANCIAL_OUTPUT_MODES =
-  new Set([
-    "pdf_csv",
-    "pdf_excel",
-    "pdf_sheets",
-    "ai_bank",
-    "ai_medical",
-  ]);
+const UNIVERSAL_OUTPUT_MODES = new Set([
+  "pdf_csv",
+  "pdf_excel",
+  "pdf_sheets",
+]);
+
+const FINANCIAL_OUTPUT_MODES = new Set([
+  "ai_bank",
+  "ai_medical",
+]);
 
 
 /* ============================================================
@@ -138,7 +144,8 @@ function getOutputExtension(
   switch (processingMode) {
 
     case "pdf_excel":
-      return "xlsx";
+      // CSV-compatible interim output; true XLSX export is a separate step.
+      return "csv";
 
     case "pdf_json":
     case "clean_data":
@@ -329,7 +336,6 @@ function cleanJsonResponse(
   return content.trim();
 }
 
-
 /* ============================================================
    PARSE ADAPTIVE FINANCIAL JSON
 ============================================================ */
@@ -443,6 +449,15 @@ function parseFinancialExtraction(
   }
 
 
+  if (
+    documentType === "unsupported_document"
+  ) {
+    throw new Error(
+      "This document does not contain supported financial data."
+    );
+  }
+
+
   const schema =
     getFinancialSchema(
       documentType
@@ -473,8 +488,7 @@ function parseFinancialExtraction(
   if (
     parsed.rows.length > 0 &&
     parsed.rows[0] &&
-    typeof parsed.rows[0] ===
-      "object"
+    typeof parsed.rows[0] === "object"
   ) {
 
     console.log(
@@ -511,9 +525,12 @@ function financialJsonToCsv(
 
   // Reject headers-only or entirely empty extracted rows.
   const meaningfulRows = extraction.rows.filter((row) =>
-    row && typeof row === "object" && !Array.isArray(row) &&
+    row &&
+    typeof row === "object" &&
+    !Array.isArray(row) &&
     Object.values(row).some((value) =>
-      value !== null && value !== undefined &&
+      value !== null &&
+      value !== undefined &&
       String(value).trim().length > 0
     )
   );
@@ -538,7 +555,7 @@ function financialJsonToCsv(
 
   console.log(
     "Generated adaptive CSV data rows:",
-    extraction.rows.length
+    meaningfulRows.length
   );
 
 
@@ -555,6 +572,227 @@ function financialJsonToCsv(
 
 
 /* ============================================================
+   PARSE UNIVERSAL DOCUMENT EXTRACTION JSON
+============================================================ */
+
+function parseUniversalExtraction(
+  rawContent
+) {
+
+  const cleaned =
+    cleanJsonResponse(
+      rawContent
+    );
+
+  let parsed;
+
+  try {
+
+    parsed = JSON.parse(cleaned);
+
+  } catch (error) {
+
+    console.error(
+      "Universal extraction JSON parse failed:",
+      error.message
+    );
+
+    console.error(
+      "Universal extraction response preview:",
+      String(rawContent || "").slice(0, 500)
+    );
+
+    throw new Error(
+      "Universal extraction returned invalid JSON."
+    );
+
+  }
+
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed)
+  ) {
+
+    throw new Error(
+      "Universal extraction must return a JSON object."
+    );
+
+  }
+
+
+  console.log(
+    "Universal document type:",
+    parsed.documentType
+  );
+
+  console.log(
+    "Universal column count:",
+    Array.isArray(parsed.columns)
+      ? parsed.columns.length
+      : 0
+  );
+
+  console.log(
+    "Universal row count:",
+    Array.isArray(parsed.rows)
+      ? parsed.rows.length
+      : 0
+  );
+
+
+  /* ==========================================================
+     VALIDATE DYNAMIC DOCUMENT STRUCTURE
+  ========================================================== */
+
+  const validation =
+    validateUniversalExtraction(parsed);
+
+
+  if (!validation.valid) {
+
+    console.error(
+      "Universal extraction validation failed:",
+      validation.errors
+    );
+
+    throw new Error(
+      "Universal extraction validation failed: " +
+      validation.errors.join("; ")
+    );
+
+  }
+
+
+  return {
+    documentType:
+      validation.documentType,
+
+    columns:
+      validation.columns,
+
+    rows:
+      validation.rows,
+  };
+
+}
+
+
+/* ============================================================
+   UNIVERSAL DOCUMENT JSON -> CSV
+============================================================ */
+
+function universalJsonToCsv(
+  rawContent
+) {
+
+  const extraction =
+    parseUniversalExtraction(
+      rawContent
+    );
+
+
+  /* ==========================================================
+     CONVERT DYNAMIC ROWS TO CSV
+  ========================================================== */
+
+  const csv =
+    universalRowsToCsv(
+      extraction
+    );
+
+
+  /* ==========================================================
+     VALIDATE GENERATED CSV
+  ========================================================== */
+
+  const validation =
+    validateUniversalCsv(
+      csv,
+      {
+        documentType:
+          extraction.documentType,
+      }
+    );
+
+
+  if (!validation.valid) {
+
+    console.error(
+      "Universal CSV validation failed:",
+      validation.errors
+    );
+
+    throw new Error(
+      "Universal CSV validation failed: " +
+      validation.errors.join("; ")
+    );
+
+  }
+
+
+  if (
+    !Array.isArray(validation.rows) ||
+    validation.rows.length === 0
+  ) {
+
+    throw new Error(
+      "Universal extraction produced no meaningful data rows."
+    );
+
+  }
+
+
+  console.log(
+    "Universal CSV generated successfully:",
+    {
+      documentType:
+        extraction.documentType,
+
+      columns:
+        extraction.columns.length,
+
+      rows:
+        validation.rows.length,
+
+      contentLength:
+        validation.cleanedCsv.length,
+    }
+  );
+
+
+  return {
+
+    documentType:
+      extraction.documentType,
+
+    schema: {
+      documentType:
+        extraction.documentType,
+
+      header:
+        extraction.columns,
+
+      expectedColumns:
+        extraction.columns.length,
+    },
+
+    csv:
+      validation.cleanedCsv,
+
+    validation,
+
+  };
+
+}
+
+
+/* ============================================================
+   END OF PART 2
+============================================================ */
+
+/* ============================================================
    USAGE TRACKING
 ============================================================ */
 
@@ -562,6 +800,7 @@ async function recordSuccessfulUsage(
   firebaseUid,
   successfulConversions
 ) {
+
   if (
     !firebaseUid ||
     successfulConversions <= 0
@@ -573,10 +812,7 @@ async function recordSuccessfulUsage(
   const currentMonth =
     new Date()
       .toISOString()
-      .slice(
-        0,
-        7
-      );
+      .slice(0, 7);
 
 
   const {
@@ -611,10 +847,10 @@ async function recordSuccessfulUsage(
 
     conversions =
       Number(
-        existingUsage.conversions ||
-        0
+        existingUsage.conversions || 0
       ) +
       successfulConversions;
+
   }
 
 
@@ -642,6 +878,7 @@ async function recordSuccessfulUsage(
   if (upsertError) {
     throw upsertError;
   }
+
 }
 
 
@@ -658,6 +895,7 @@ async function recordConversionHistory({
   status,
   content,
 }) {
+
   const {
     data,
     error,
@@ -693,12 +931,14 @@ async function recordConversionHistory({
 
 
   if (error) {
+
     console.error(
       "Conversion history insert error:",
       error
     );
 
     throw error;
+
   }
 
 
@@ -730,7 +970,10 @@ async function recordConversionHistory({
     data?.id?.toString() ??
     null
   );
+
 }
+
+
 /* ============================================================
    POST /extract
    MAIN DOCUMENT EXTRACTION ROUTE
@@ -740,6 +983,7 @@ router.post(
   "/",
 
   requireFirebaseAuth,
+
 
   /* ============================================================
      REQUEST LOGGING
@@ -776,6 +1020,7 @@ router.post(
     );
 
     next();
+
   },
 
 
@@ -823,6 +1068,7 @@ router.post(
     }
 
     next();
+
   },
 
 
@@ -847,6 +1093,7 @@ router.post(
     );
 
     next();
+
   },
 
 
@@ -864,6 +1111,7 @@ router.post(
     );
 
     next();
+
   },
 
 
@@ -983,9 +1231,20 @@ router.post(
       ======================================================== */
 
       const prompt =
-        getExtractionPrompt(
-          processingMode
+        UNIVERSAL_OUTPUT_MODES.has(processingMode)
+          ? UNIVERSAL_EXTRACTION_PROMPT
+          : getExtractionPrompt(processingMode);
+
+      if (
+        typeof prompt !== "string" ||
+        prompt.trim().length === 0
+      ) {
+
+        throw new Error(
+          "No extraction prompt is configured for this processing mode."
         );
+
+      }
 
       console.log(
         "Extraction prompt loaded."
@@ -998,13 +1257,17 @@ router.post(
 
 
       /* ========================================================
-         PROCESS FILES
+         INITIALIZE BATCH RESULTS
       ======================================================== */
 
       const results = [];
 
       const errors = [];
 
+
+      /* ========================================================
+         BEGIN FILE PROCESSING LOOP
+      ======================================================== */
 
       for (
         let fileIndex = 0;
@@ -1025,8 +1288,9 @@ router.post(
             processingMode
           );
 
-        // Declared outside the try block so that
-        // failed-history handling can access it.
+        // These variables remain outside the individual
+        // file try/catch so failed conversions can be
+        // recorded in Supabase.
 
         let documentType = null;
 
@@ -1128,10 +1392,106 @@ router.post(
 
 
           /* ====================================================
-             ADAPTIVE FINANCIAL PROCESSING
+             END OF PART 3
+             PART 4 CONTINUES INSIDE THIS TRY BLOCK
+          ==================================================== */
+		  
+		            /* ====================================================
+             UNIVERSAL DOCUMENT PROCESSING
           ==================================================== */
 
           if (
+            UNIVERSAL_OUTPUT_MODES.has(
+              processingMode
+            )
+          ) {
+
+            console.log(
+              "=== PROCESSING UNIVERSAL DOCUMENT ==="
+            );
+
+
+            /* ==================================================
+               PARSE, CONVERT AND VALIDATE UNIVERSAL JSON
+            ================================================== */
+
+            const universalOutput =
+              universalJsonToCsv(
+                rawContent
+              );
+
+
+            documentType =
+              universalOutput.documentType;
+
+            schemaHeader =
+              universalOutput.schema.header;
+
+            validation =
+              universalOutput.validation;
+
+
+            console.log(
+              "Universal document classified as:",
+              documentType
+            );
+
+            console.log(
+              "Dynamic column count:",
+              schemaHeader.length
+            );
+
+
+            /* ==================================================
+               BUILD FRIENDLY OUTPUT FILENAME
+            ================================================== */
+
+            outputFileName =
+              buildFriendlyOutputFileName(
+                documentType,
+                processingMode,
+                fileIndex
+              );
+
+
+            console.log(
+              "Universal output filename:",
+              outputFileName
+            );
+
+
+            /* ==================================================
+               SET VALIDATED UNIVERSAL CSV
+            ================================================== */
+
+            finalContent =
+              validation.cleanedCsv;
+
+
+            console.log(
+              "Universal extraction completed:",
+              {
+                documentType,
+
+                columns:
+                  schemaHeader.length,
+
+                rows:
+                  validation.rows.length,
+
+                contentLength:
+                  finalContent.length,
+              }
+            );
+
+          }
+
+
+          /* ====================================================
+             ADAPTIVE FINANCIAL PROCESSING
+          ==================================================== */
+
+          else if (
             FINANCIAL_OUTPUT_MODES.has(
               processingMode
             )
@@ -1143,7 +1503,7 @@ router.post(
 
 
             /* ==================================================
-               CONVERT STRUCTURED JSON TO CSV
+               CONVERT STRUCTURED FINANCIAL JSON TO CSV
             ================================================== */
 
             const adaptiveOutput =
@@ -1160,12 +1520,12 @@ router.post(
 
 
             console.log(
-              "Document classified as:",
+              "Financial document classified as:",
               documentType
             );
 
             console.log(
-              "Schema column count:",
+              "Financial schema column count:",
               schemaHeader.length
             );
 
@@ -1183,24 +1543,14 @@ router.post(
 
 
             console.log(
-              "Detected document type:",
-              documentType
-            );
-
-            console.log(
-              "Friendly output filename:",
+              "Financial output filename:",
               outputFileName
             );
 
 
             /* ==================================================
-               VALIDATE ADAPTIVE CSV
+               VALIDATE FINANCIAL CSV
             ================================================== */
-
-            console.log(
-              "=== VALIDATING ADAPTIVE CSV ==="
-            );
-
 
             validation =
               validateCsv(
@@ -1212,36 +1562,18 @@ router.post(
 
 
             console.log(
-              "CSV validation valid:",
+              "Financial CSV validation valid:",
               validation.valid
             );
 
 
             console.log(
-              "CSV validation errors:",
+              "Financial CSV validation errors:",
               Array.isArray(
                 validation.errors
               )
                 ? validation.errors.length
                 : 0
-            );
-
-
-            console.log(
-              "CSV validated rows:",
-              Array.isArray(
-                validation.rows
-              )
-                ? validation.rows.length
-                : 0
-            );
-
-
-            console.log(
-              "Cleaned CSV length:",
-              String(
-                validation.cleanedCsv || ""
-              ).length
             );
 
 
@@ -1252,18 +1584,19 @@ router.post(
             if (!validation.valid) {
 
               console.error(
-                `CSV validation failed for "${inputFileName}":`,
+                `Financial CSV validation failed for "${inputFileName}":`,
                 validation.errors
               );
 
               throw new Error(
-                `CSV validation failed: ${
+                "Financial CSV validation failed: " +
+                (
                   Array.isArray(
                     validation.errors
                   )
                     ? validation.errors.join("; ")
                     : "Invalid extraction result."
-                }`
+                )
               );
 
             }
@@ -1274,26 +1607,69 @@ router.post(
             ================================================== */
 
             if (
-              !Array.isArray(validation.rows) ||
+              !Array.isArray(
+                validation.rows
+              ) ||
               validation.rows.length === 0
             ) {
 
               throw new Error(
-                "Extraction produced no CSV data rows."
+                "Financial extraction produced no CSV data rows."
               );
 
             }
 
 
             /* ==================================================
-               SET VALIDATED CONTENT
+               SET VALIDATED FINANCIAL CONTENT
             ================================================== */
 
             finalContent =
               validation.cleanedCsv;
 
 
-          } // END ADAPTIVE FINANCIAL PROCESSING
+            console.log(
+              "Financial extraction completed:",
+              {
+                documentType,
+
+                columns:
+                  schemaHeader.length,
+
+                rows:
+                  validation.rows.length,
+
+                contentLength:
+                  finalContent.length,
+              }
+            );
+
+          }
+
+
+          /* ====================================================
+             OTHER PROCESSING MODES
+          ==================================================== */
+
+          else {
+
+            console.log(
+              "=== PROCESSING NON-CSV DOCUMENT MODE ==="
+            );
+
+            console.log(
+              "Processing mode:",
+              processingMode
+            );
+
+            // Preserve existing processing behavior for
+            // modes that do not use the universal or
+            // financial CSV extraction pipelines.
+
+            finalContent =
+              rawContent;
+
+          }
 
 
           /* ====================================================
@@ -1321,6 +1697,10 @@ router.post(
           );
 
 
+          /* ====================================================
+             REJECT EMPTY FINAL CONTENT
+          ==================================================== */
+
           if (
             !finalContent ||
             String(finalContent)
@@ -1340,7 +1720,71 @@ router.post(
 
 
           /* ====================================================
-             RECORD COMPLETED HISTORY
+             FINAL VALIDATION SAFETY CHECK
+          ==================================================== */
+
+          if (
+            UNIVERSAL_OUTPUT_MODES.has(
+              processingMode
+            ) ||
+            FINANCIAL_OUTPUT_MODES.has(
+              processingMode
+            )
+          ) {
+
+            if (
+              !validation ||
+              validation.valid !== true
+            ) {
+
+              throw new Error(
+                "Extraction did not pass CSV validation."
+              );
+
+            }
+
+
+            if (
+              !Array.isArray(
+                validation.rows
+              ) ||
+              validation.rows.length === 0
+            ) {
+
+              throw new Error(
+                "Extraction produced no meaningful data rows."
+              );
+
+            }
+
+
+            if (
+              !Array.isArray(
+                schemaHeader
+              ) ||
+              schemaHeader.length === 0
+            ) {
+
+              throw new Error(
+                "Extraction produced no valid column headers."
+              );
+
+            }
+
+          }
+
+
+          /* ====================================================
+             END OF PART 4
+
+             PART 5 CONTINUES WITH:
+             - RECORD COMPLETED CONVERSION HISTORY
+             - SUCCESS RESULTS
+             - FAILED CONVERSION HANDLING
+          ==================================================== */
+		  
+		            /* ====================================================
+             RECORD COMPLETED CONVERSION HISTORY
           ==================================================== */
 
           let historyId = null;
@@ -1458,7 +1902,7 @@ router.post(
 
 
           /* ====================================================
-             RECORD FAILED HISTORY
+             RECORD FAILED CONVERSION HISTORY
           ==================================================== */
 
           let failedHistoryId = null;
@@ -1678,6 +2122,11 @@ router.post(
 
 
 ); // END POST /extract ROUTE
+
+
+/* ============================================================
+   END OF PART 5
+============================================================ */
 
 /* ============================================================
    POST /extract/download-all-zip
@@ -1954,6 +2403,10 @@ router.post(
   }
 );
 
+
+/* ============================================================
+   END OF PART 6
+============================================================ */
 
 /* ============================================================
    GET /extract/conversion-history
@@ -2393,8 +2846,12 @@ router.delete(
 
 
 /* ============================================================
-   DELETE DATAEXTRACT ACCOUNT DATA
+   END OF PART 7
+============================================================ */
+
+/* ============================================================
    DELETE /extract/delete
+   DELETE USER ACCOUNT DATA
 ============================================================ */
 
 router.delete(
@@ -2406,12 +2863,46 @@ router.delete(
 
     try {
 
+      console.log(
+        "========================================"
+      );
+
+      console.log(
+        "=== ACCOUNT DATA DELETION REQUEST ==="
+      );
+
+
+      /* ========================================================
+         GET AUTHENTICATED FIREBASE USER
+      ======================================================== */
+
       const firebaseUid =
-        req.firebaseUser.uid;
+        req.firebaseUser?.uid;
+
+
+      /* ========================================================
+         VALIDATE FIREBASE USER
+      ======================================================== */
+
+      if (
+        !firebaseUid ||
+        String(firebaseUid).trim().length === 0
+      ) {
+
+        return res.status(401).json({
+
+          success: false,
+
+          error:
+            "Authentication required to delete account data.",
+
+        });
+
+      }
 
 
       console.log(
-        "=== DATAEXTRACT ACCOUNT DELETE REQUEST ==="
+        "Account data deletion authorized."
       );
 
 
@@ -2419,8 +2910,13 @@ router.delete(
          DELETE CONVERSION HISTORY
       ======================================================== */
 
+      console.log(
+        "Deleting conversion history..."
+      );
+
+
       const {
-        error: historyError,
+        error: historyDeleteError,
       } = await supabase
         .from("conversion_history")
         .delete()
@@ -2430,11 +2926,11 @@ router.delete(
         );
 
 
-      if (historyError) {
+      if (historyDeleteError) {
 
         console.error(
-          "Account delete - conversion_history error:",
-          historyError
+          "Conversion history deletion failed:",
+          historyDeleteError
         );
 
 
@@ -2450,12 +2946,22 @@ router.delete(
       }
 
 
+      console.log(
+        "Conversion history deletion completed."
+      );
+
+
       /* ========================================================
-         DELETE USAGE
+         DELETE USAGE RECORDS
       ======================================================== */
 
+      console.log(
+        "Deleting usage records..."
+      );
+
+
       const {
-        error: usageError,
+        error: usageDeleteError,
       } = await supabase
         .from("usage")
         .delete()
@@ -2465,11 +2971,11 @@ router.delete(
         );
 
 
-      if (usageError) {
+      if (usageDeleteError) {
 
         console.error(
-          "Account delete - usage error:",
-          usageError
+          "Usage record deletion failed:",
+          usageDeleteError
         );
 
 
@@ -2478,19 +2984,29 @@ router.delete(
           success: false,
 
           error:
-            "Unable to delete usage data.",
+            "Unable to delete usage records.",
 
         });
 
       }
 
 
+      console.log(
+        "Usage record deletion completed."
+      );
+
+
       /* ========================================================
-         DELETE FEEDBACK
+         DELETE USER FEEDBACK
       ======================================================== */
 
+      console.log(
+        "Deleting feedback records..."
+      );
+
+
       const {
-        error: feedbackError,
+        error: feedbackDeleteError,
       } = await supabase
         .from("feedback")
         .delete()
@@ -2500,11 +3016,11 @@ router.delete(
         );
 
 
-      if (feedbackError) {
+      if (feedbackDeleteError) {
 
         console.error(
-          "Account delete - feedback error:",
-          feedbackError
+          "Feedback deletion failed:",
+          feedbackDeleteError
         );
 
 
@@ -2513,19 +3029,29 @@ router.delete(
           success: false,
 
           error:
-            "Unable to delete feedback data.",
+            "Unable to delete feedback records.",
 
         });
 
       }
 
 
+      console.log(
+        "Feedback deletion completed."
+      );
+
+
       /* ========================================================
-         DELETE SUBSCRIPTION RECORD
+         DELETE SUBSCRIPTION RECORDS
       ======================================================== */
 
+      console.log(
+        "Deleting subscription records..."
+      );
+
+
       const {
-        error: subscriptionError,
+        error: subscriptionDeleteError,
       } = await supabase
         .from("subscriptions")
         .delete()
@@ -2535,11 +3061,11 @@ router.delete(
         );
 
 
-      if (subscriptionError) {
+      if (subscriptionDeleteError) {
 
         console.error(
-          "Account delete - subscriptions error:",
-          subscriptionError
+          "Subscription deletion failed:",
+          subscriptionDeleteError
         );
 
 
@@ -2548,36 +3074,55 @@ router.delete(
           success: false,
 
           error:
-            "Unable to delete subscription data.",
+            "Unable to delete subscription records.",
 
         });
 
       }
 
 
+      console.log(
+        "Subscription record deletion completed."
+      );
+
+
       /* ========================================================
-         SUCCESS RESPONSE
+         ACCOUNT DATA DELETION COMPLETED
       ======================================================== */
 
       console.log(
-        "DataExtract account data deleted successfully."
+        "=== ACCOUNT DATA DELETION COMPLETED ==="
       );
 
+
+      console.log(
+        "========================================"
+      );
+
+
+      /* ========================================================
+         SUCCESS RESPONSE
+      ======================================================== */
 
       return res.status(200).json({
 
         success: true,
 
         message:
-          "DataExtract account data deleted successfully.",
+          "User account data deleted successfully.",
 
       });
 
 
     } catch (error) {
 
+
+      /* ========================================================
+         ACCOUNT DELETION ERROR HANDLER
+      ======================================================== */
+
       console.error(
-        "Account delete route error:",
+        "Account data deletion error:",
         error
       );
 
@@ -2592,6 +3137,7 @@ router.delete(
 
       });
 
+
     }
 
   }
@@ -2599,7 +3145,13 @@ router.delete(
 
 
 /* ============================================================
-   EXPORT ROUTER
+   EXPRESS ROUTER EXPORT
 ============================================================ */
 
 module.exports = router;
+
+
+/* ============================================================
+   END OF PART 8
+   END OF routes/extraction.js
+============================================================ */
