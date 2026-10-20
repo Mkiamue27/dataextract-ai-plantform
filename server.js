@@ -9,9 +9,11 @@ require("dotenv").config();
 
 /* ============================================================
    FIREBASE ADMIN SDK INITIALIZATION
+   Supports Render production and local development
 ============================================================ */
 
 const fs = require("fs");
+const path = require("path");
 
 const {
   initializeApp,
@@ -19,46 +21,102 @@ const {
   getApps
 } = require("firebase-admin/app");
 
-const firebaseServiceAccountPath =
+
+/* ============================================================
+   FIREBASE SERVICE ACCOUNT PATHS
+============================================================ */
+
+// Render production secret file
+const renderServiceAccountPath =
   "/etc/secrets/firebase-service-account.json";
 
-if (fs.existsSync(firebaseServiceAccountPath)) {
+// Local Windows development file
+const localServiceAccountPath =
+  path.join(
+    __dirname,
+    "firebase-service-account.json"
+  );
 
-  if (getApps().length === 0) {
 
-    initializeApp({
-      credential: cert(
+/* ============================================================
+   SELECT AVAILABLE FIREBASE CREDENTIALS
+============================================================ */
+
+let firebaseServiceAccountPath = null;
+
+if (
+  fs.existsSync(renderServiceAccountPath)
+) {
+
+  firebaseServiceAccountPath =
+    renderServiceAccountPath;
+
+  console.log(
+    "Firebase environment: Render production"
+  );
+
+} else if (
+  fs.existsSync(localServiceAccountPath)
+) {
+
+  firebaseServiceAccountPath =
+    localServiceAccountPath;
+
+  console.log(
+    "Firebase environment: Local development"
+  );
+
+}
+
+
+/* ============================================================
+   INITIALIZE FIREBASE ADMIN SDK
+============================================================ */
+
+if (firebaseServiceAccountPath) {
+
+  try {
+
+    if (getApps().length === 0) {
+
+      const serviceAccount =
         JSON.parse(
           fs.readFileSync(
             firebaseServiceAccountPath,
             "utf8"
           )
+        );
+
+      initializeApp({
+        credential: cert(
+          serviceAccount
         )
-      )
-    });
+      });
+
+    }
+
+    console.log(
+      "Firebase Admin SDK initialized successfully."
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Firebase Admin SDK initialization failed:",
+      error.message
+    );
+
+    throw error;
 
   }
-
-  console.log(
-    "Firebase Admin SDK initialized successfully."
-  );
 
 } else {
 
   console.error(
-    "Firebase service account file not found."
+    "Firebase Admin SDK initialization skipped: no service account file found."
   );
 
 }
-
-const extractionRoutes = require("./routes/extraction");
-const {
-  PLAN_LIMITS,
-} = require("./config/constants");
-
-const app = express();
-const port = process.env.PORT || 3000;
-
 
 /* ============================================================
    SERVICES
