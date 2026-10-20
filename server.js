@@ -34,7 +34,7 @@ const renderServiceAccountPath =
 // Stored outside the project and OneDrive
 
 const localServiceAccountPath =
-  "C:\\DataExtract-Secrets\\firebase-service-account.json
+  "C:\\DataExtract-Secrets\\firebase-service-account.json";
    
 const extractionRoutes = require("./routes/extraction");
 
