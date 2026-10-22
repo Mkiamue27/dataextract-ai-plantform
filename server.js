@@ -612,16 +612,7 @@ app.get(
   }
 );
 
-/* ============================================================
-   DATAEXTRACT AI — SUBSCRIPTION PLAN LIMITS
-============================================================ */
 
-const PLAN_LIMITS = {
-  free: 5,
-  starter: 100,
-  pro: Infinity,
-  business: Infinity,
-};
 
 /* ============================================================
    GET USAGE STATUS
