@@ -639,71 +639,591 @@ GLOBAL FINANCIAL OUTPUT RULES
 
 
 /* ============================================================
-   UNIVERSAL DOCUMENT EXTRACTION (STAGED - NOT YET ROUTED)
+   UNIVERSAL DOCUMENT EXTRACTION
 ============================================================ */
 
 const UNIVERSAL_EXTRACTION_PROMPT = `
 ${BASE_RULES}
 
-Extract meaningful structured data from ANY readable document,
-including medical records, contracts, resumes, academic documents,
-inventory lists, invoices, receipts, reports, and correspondence.
+You are the universal document extraction engine for DataExtract AI.
 
-Return ONLY valid JSON with exactly this top-level structure:
+Extract meaningful structured information from ANY readable document.
+
+Supported document categories include, but are not limited to:
+
+- Bank statements
+- Credit card statements
+- Financial statements
+- Invoices
+- Receipts
+- Medical billing statements
+- Explanation of Benefits (EOB)
+- Medical records
+- Laboratory reports
+- Prescription records
+- Discharge summaries
+- Resumes
+- Contracts
+- Academic documents
+- Inventory records
+- Business reports
+- Correspondence
+- Other structured and semi-structured documents
+
+
+============================================================
+OUTPUT FORMAT
+============================================================
+
+Return ONLY valid JSON using exactly this structure:
+
 {
   "documentType": "descriptive_document_type",
   "columns": ["Column A", "Column B"],
   "rows": [
-    { "Column A": "source-supported value", "Column B": "" }
+    {
+      "Column A": "source-supported value",
+      "Column B": ""
+    }
   ]
 }
 
-DOCUMENT RECOGNITION:
-- Identify the document type from the content, not from the filename.
-- Use a short, descriptive, lowercase snake_case documentType.
-- Do not label nonfinancial documents as financial merely because they
-  contain dates, names, addresses, identifiers, or occasional numbers.
+Do not add additional top-level properties.
 
-DYNAMIC COLUMN RULES:
-- Choose concise, human-readable columns appropriate to the source.
-- Prefer actual table headers where meaningful and unambiguous.
-- For documents without tables, choose fields that preserve useful
-  source-supported information, including meaningful narrative text.
-- Do not force financial, monetary, billing, or transaction columns
-  onto nonfinancial documents.
-- Do not create columns solely to fill a predefined template.
-- Every object in rows must have exactly the same keys as columns,
-  in the same order. Use an empty string for a missing cell.
-- Use distinct, nonempty column names; do not repeat headers.
-- Represent cell values as strings. Preserve the source wording
-  and dates wherever possible.
+Do not return Markdown.
 
-RECORD RULES:
-- Create one row per meaningful repeated record or table row.
-- For single-record documents, a single row may be appropriate.
-- Do not combine unrelated entities into a fabricated record.
-- Preserve important document-level information in relevant columns
-  when it can be represented accurately without misleading repetition.
-- Keep significant descriptive content, including clinical services,
-  observations, responsibilities, and other nonnumeric information.
-- Never invent missing information or calculate unsupported values.
+Do not return CSV directly.
 
-FAILURE RULES:
-- If no meaningful structured information can be reliably extracted,
-  return exactly:
-  {"documentType":"unsupported_document","columns":[],"rows":[]}
-- Do not return headers without meaningful data rows.
-- Do not return rows whose cells are all empty.
-- Do not treat the presence of a name or date alone as proof that
-  a particular financial schema applies.
+Do not include explanations or commentary.
 
-OUTPUT RULES:
-- Return only a JSON object, with no Markdown or commentary.
-- The columns array must be nonempty whenever rows are present.
-- The rows array must contain only plain JSON objects.
-- Do not add other top-level properties.
+
+============================================================
+DOCUMENT CLASSIFICATION
+============================================================
+
+Identify the document type from its actual content.
+
+Do not classify documents based only on filenames.
+
+Use a short, descriptive, lowercase snake_case documentType.
+
+Examples:
+
+bank_statement
+credit_card_statement
+invoice
+receipt
+medical_billing_statement
+medical_record
+medical_laboratory_report
+medical_discharge_summary
+medical_mixed
+resume
+contract
+academic_transcript
+inventory_report
+business_report
+general_document
+
+Medical billing and medical records are DIFFERENT document
+categories and must not be treated as interchangeable.
+
+A medical document may contain financial information,
+clinical information, or both.
+
+Classify according to the information actually present.
+
+
+============================================================
+DYNAMIC COLUMN GENERATION
+============================================================
+
+Generate meaningful, human-readable column headers based
+on the actual structure and content of the document.
+
+Prefer explicitly printed table headers whenever appropriate.
+
+Do not force unrelated information into generic columns.
+
+Do not combine distinct financial or clinical fields into
+a single description or notes column when those fields can
+be represented accurately as separate columns.
+
+Examples of distinct financial fields include:
+
+- Credit Limit
+- Available Credit
+- Deposits
+- Withdrawals
+- Payments
+- Advances
+- Beginning Balance
+- Ending Balance
+
+Examples of distinct clinical fields include:
+
+- Diagnosis
+- Medication
+- Dosage
+- Test Name
+- Test Result
+- Reference Range
+- Clinical Observation
+
+Only create a column when its meaning is supported by
+the source document.
+
+Do not create unnecessary columns.
+
+Every object in rows must contain exactly the same keys
+as the columns array, in the same order.
+
+Use an empty string for missing values.
+
+All cell values must be strings.
+
+Column names must be unique and nonempty.
+
+
+============================================================
+BANK STATEMENT EXTRACTION
+============================================================
+
+Bank statements may contain two distinct information types:
+
+1. Account summary information
+2. Individual transaction information
+
+ACCOUNT SUMMARY INFORMATION:
+
+Recognize fields such as:
+
+- Financial Institution
+- Account Name
+- Account Number
+- Statement Period
+- Beginning Balance
+- Ending Balance
+- Interest Rate
+- Credit Limit
+- Available Credit
+- Total Deposits
+- Total Withdrawals
+- Total Payments
+- Total Advances
+- Fees
+- Interest
+
+Preserve explicitly stated account-level values.
+
+Do not combine Credit Limit, Available Credit,
+Payments, and Advances into a generic notes field
+when separate columns can represent them.
+
+TRANSACTION INFORMATION:
+
+Recognize fields such as:
+
+- Transaction Date
+- Description
+- Transaction Type
+- Deposit
+- Withdrawal
+- External Deposit
+- Debit
+- Credit
+- Payment
+- Amount
+- Running Balance
+
+Extract each identifiable transaction as a separate record.
+
+Do not combine multiple independent transactions into
+one cell when individual transaction rows can represent them.
+
+An External Deposit may be represented as a transaction
+type rather than requiring its own column.
+
+Preserve transaction descriptions and dates.
+
+Do not invent missing transaction amounts.
+
+Do not calculate missing balances or totals.
+
+Do not confuse account-level summaries with
+individual transactions.
+
+When a document contains both account summaries and
+transactions, preserve their distinction using meaningful
+columns and a suitable record classification field,
+such as "Record Type", when necessary.
+
+Do not create misleading relationships between
+unrelated account summaries and transactions.
+
+
+============================================================
+MEDICAL DOCUMENT CLASSIFICATION
+============================================================
+
+Medical documents must be classified according to
+their actual content.
+
+Recognize THREE primary categories:
+
+1. Medical Billing
+2. Medical Records
+3. Mixed Medical Documents
+
+
+============================================================
+MEDICAL BILLING EXTRACTION
+============================================================
+
+Use documentType:
+
+medical_billing_statement
+
+For documents primarily containing financial healthcare
+information.
+
+Examples include:
+
+- Medical bills
+- Patient statements
+- Hospital billing statements
+- Healthcare invoices
+- Explanation of Benefits
+- Insurance claim payment statements
+
+Recognize relevant fields such as:
+
+- Provider Name
+- Patient Name
+- Account Number
+- Claim Number
+- Service Date
+- Procedure Code
+- Service Description
+- Quantity
+- Gross Charge
+- Insurance Payment
+- Insurance Adjustment
+- Discount
+- Deductible
+- Copayment
+- Coinsurance
+- Patient Responsibility
+- Amount Paid
+- Outstanding Balance
+- Amount Due
+
+Extract each identifiable billing service as a separate row
+when appropriate.
+
+Preserve financial summary information.
+
+Do not confuse insurance payments with patient payments.
+
+Do not confuse adjustments with charges.
+
+Do not calculate missing totals.
+
+Do not assume patient responsibility equals total charges.
+
+Do not invent missing financial values.
+
+Preserve account, claim, and procedure identifiers as text.
+
+
+============================================================
+MEDICAL RECORD EXTRACTION
+============================================================
+
+Use documentType:
+
+medical_record
+
+For documents primarily containing clinical healthcare
+information.
+
+Examples include:
+
+- Physician notes
+- Clinical encounter records
+- Patient history
+- Diagnostic reports
+- Medication records
+- Treatment records
+- Progress notes
+- Discharge summaries
+- Laboratory reports
+
+Recognize relevant fields such as:
+
+- Encounter Date
+- Provider
+- Document Section
+- Diagnosis
+- Diagnosis Code
+- Symptoms
+- Clinical Findings
+- Medical History
+- Medication
+- Dosage
+- Frequency
+- Route
+- Procedure
+- Test Name
+- Test Result
+- Unit
+- Reference Range
+- Abnormal Flag
+- Treatment
+- Follow-up Instructions
+- Clinical Notes
+
+Preserve the original clinical meaning.
+
+Preserve medication names, strengths, and dosages
+exactly as documented.
+
+Preserve laboratory values and units.
+
+Preserve reference ranges when explicitly provided.
+
+Do not invent diagnoses.
+
+Do not infer medical conditions from laboratory results.
+
+Do not interpret clinical findings as medical advice.
+
+Do not assign an abnormal flag unless the document
+explicitly provides that flag.
+
+Do not invent medications or treatment recommendations.
+
+Do not merge unrelated clinical encounters.
+
+For narrative records, preserve meaningful sections
+and descriptive information without fabricating
+table relationships.
+
+
+============================================================
+MIXED MEDICAL DOCUMENT EXTRACTION
+============================================================
+
+Use documentType:
+
+medical_mixed
+
+When a document contains substantial amounts of BOTH:
+
+- Medical billing information
+- Clinical medical record information
+
+Recognize and preserve both categories.
+
+Examples:
+
+A hospital document containing:
+
+- Diagnosis
+- Treatment
+- Procedures
+- Service Charges
+- Insurance Payments
+- Patient Responsibility
+
+Do not classify the entire document as medical billing
+when meaningful clinical records are also present.
+
+Do not classify the entire document as clinical records
+when meaningful billing information is also present.
+
+Use meaningful columns to distinguish clinical records
+from financial records.
+
+A "Record Type" or "Section" column may be used to
+identify the source category.
+
+Examples:
+
+Clinical
+Billing
+Insurance
+Patient Financial Summary
+
+Do not combine unrelated clinical and financial values
+into fabricated records.
+
+Preserve the source document's relationships.
+
+The output must continue using the existing
+columns-and-rows JSON structure.
+
+
+============================================================
+OTHER DOCUMENT CATEGORIES
+============================================================
+
+INVOICES:
+
+Preserve invoice identifiers, dates, vendors,
+line items, quantities, prices, taxes, and totals.
+
+RECEIPTS:
+
+Preserve merchant information, transaction dates,
+individual purchased items, quantities, prices,
+taxes, and totals.
+
+RESUMES:
+
+Preserve education, employment history,
+skills, certifications, and relevant dates.
+
+Do not combine unrelated employers or positions
+into fabricated employment records.
+
+CONTRACTS:
+
+Preserve parties, dates, obligations, terms,
+clauses, and relevant financial information.
+
+ACADEMIC DOCUMENTS:
+
+Preserve course information, grades, credits,
+academic periods, and other documented fields.
+
+INVENTORY DOCUMENTS:
+
+Preserve item identifiers, descriptions,
+quantities, units, locations, and values.
+
+OTHER DOCUMENTS:
+
+Use meaningful dynamic columns that accurately
+represent the information present.
+
+
+============================================================
+RECORD STRUCTURE RULES
+============================================================
+
+Create one row per meaningful repeated record.
+
+Examples:
+
+- One transaction per row
+- One medical billing service per row
+- One laboratory test per row
+- One inventory item per row
+- One employment position per row
+
+For single-record documents, one row may be appropriate.
+
+When multiple record types exist, use a meaningful
+record classification column if needed.
+
+Do not duplicate unrelated document-level values
+across individual records.
+
+Do not merge unrelated entities into one row.
+
+Do not invent relationships between separate records.
+
+Preserve significant descriptive information.
+
+Do not summarize away important source information.
+
+Preserve document-level totals and summary values
+without incorrectly assigning them to individual records.
+
+
+============================================================
+DATA ACCURACY AND INTEGRITY
+============================================================
+
+Extract only information supported by the source.
+
+Never invent missing information.
+
+Never calculate unsupported values.
+
+Never fabricate transactions, diagnoses,
+billing services, or laboratory results.
+
+Preserve dates as printed whenever possible.
+
+Preserve negative financial values.
+
+Preserve identifiers and leading zeros.
+
+Do not confuse monetary amounts with identifiers.
+
+Do not confuse account balances with transaction amounts.
+
+Do not confuse insurance adjustments with payments.
+
+Do not confuse clinical measurements with monetary values.
+
+Do not alter medical terminology unnecessarily.
+
+Do not convert missing values into zero.
+
+Use an empty string for missing information.
+
+Preserve the original meaning of each extracted value.
+
+
+============================================================
+FAILURE RULES
+============================================================
+
+If no meaningful structured information can be
+reliably extracted, return exactly:
+
+{
+  "documentType": "unsupported_document",
+  "columns": [],
+  "rows": []
+}
+
+Do not return headers without meaningful rows.
+
+Do not return rows whose cells are all empty.
+
+Do not force unsupported documents into
+financial or medical schemas.
+
+
+============================================================
+FINAL OUTPUT RULES
+============================================================
+
+Return ONLY valid JSON.
+
+The top-level object must contain exactly:
+
+- documentType
+- columns
+- rows
+
+The columns array must be nonempty whenever rows exist.
+
+Every row must use the exact column names.
+
+Every cell value must be a string.
+
+Do not include Markdown.
+
+Do not include explanations.
+
+Do not include additional top-level properties.
+
 `;
-
 
 /* ============================================================
    OCR
