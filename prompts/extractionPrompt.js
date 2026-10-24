@@ -1112,20 +1112,95 @@ represent the information present.
 RECORD STRUCTURE RULES
 ============================================================
 
+EXTRACTION COMPLETENESS:
+
+- Extract every identifiable meaningful record from the
+  entire readable document.
+
+- Process all available pages and sections, including
+  tables that continue across multiple pages.
+
+- Do not stop after extracting document summaries.
+
+- Do not select only representative records or examples.
+
+- Do not replace detailed records with a summary.
+
+- Do not omit individual records merely because their
+  information is already represented in a summary.
+
+- Preserve the original order of repeated records
+  whenever possible.
+
+RECORD GRANULARITY:
+
 Create one row per meaningful repeated record.
 
 Examples:
 
-- One transaction per row
-- One medical billing service per row
-- One laboratory test per row
-- One inventory item per row
-- One employment position per row
+- One bank transaction per row.
+- One credit card transaction per row.
+- One medical billing service per row.
+- One laboratory test per row.
+- One invoice line item per row.
+- One receipt item per row.
+- One inventory item per row.
+- One employment position per row.
 
 For single-record documents, one row may be appropriate.
 
-When multiple record types exist, use a meaningful
-record classification column if needed.
+MULTIPLE RECORD TYPES:
+
+When a document contains multiple record categories,
+preserve each category without combining unrelated data.
+
+Examples:
+
+- Bank account summaries and individual transactions.
+- Medical billing summaries and individual services.
+- Invoice summaries and individual line items.
+- Clinical summaries and individual laboratory results.
+
+When multiple record categories are present, include
+a "Record Type" column in the dynamic columns array.
+
+Use clear record classifications appropriate to the document.
+
+Examples include:
+
+- Account Summary
+- Transaction
+- Billing Summary
+- Medical Service
+- Invoice Summary
+- Invoice Line Item
+- Clinical Summary
+- Laboratory Result
+
+Each record must occupy its own row.
+
+For summary records, populate only the columns that
+belong to that summary.
+
+For transaction or line-item records, populate the
+corresponding detail columns.
+
+Leave unrelated fields as empty strings.
+
+ACCOUNT AND RECORD ASSOCIATIONS:
+
+When a document contains multiple accounts, preserve
+the correct account association for every transaction.
+
+Use account names, account identifiers, or other
+explicitly documented identifiers when available.
+
+Do not assign transactions to unrelated accounts.
+
+Do not combine transactions from different accounts
+into a single record.
+
+DATA RELATIONSHIPS:
 
 Do not duplicate unrelated document-level values
 across individual records.
@@ -1141,6 +1216,28 @@ Do not summarize away important source information.
 Preserve document-level totals and summary values
 without incorrectly assigning them to individual records.
 
+FINAL COMPLETENESS REVIEW:
+
+Before returning the JSON response, review the
+document's identifiable repeated records.
+
+Check that each readable transaction, service,
+line item, or other meaningful repeated record
+has a corresponding output row.
+
+Check that account summaries have not replaced
+individual transaction records.
+
+Check that multi-page tables have not been
+summarized into a single row.
+
+Do not invent records to satisfy completeness.
+
+If a record cannot be reliably read, do not guess
+its missing values.
+
+Maintain the required documentType, columns,
+and rows JSON structure.
 
 ============================================================
 DATA ACCURACY AND INTEGRITY
